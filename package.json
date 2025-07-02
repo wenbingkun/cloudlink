@@ -1,0 +1,17 @@
+{
+  "name": "cloudlink",
+  "version": "1.0.0",
+  "description": "Personal file sharing service using Cloudflare Workers and Google Drive",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "publish": "wrangler deploy"
+  },
+  "keywords": ["cloudflare", "workers", "file-sharing", "google-drive"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

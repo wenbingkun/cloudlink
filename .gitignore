@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+dist/
+*.log
+.env
+.env.local
+.env.production.local
+.env.development.local
+service-account.json
+*.Zone.Identifier
+
+# Keep .claude directory but it's optional to commit
+# .claude/
