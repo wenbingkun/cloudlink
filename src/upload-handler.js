@@ -1,4 +1,3 @@
-import { generateId } from './utils.js';
 import { ServerAuthManager } from './auth-manager.js';
 
 const corsHeaders = {
@@ -76,14 +75,12 @@ export async function handleUpload(request, env, driveAPI, url) {
       });
     }
 
-    const timestamp = Date.now();
-    const randomId = generateId();
-    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const uniqueFileName = `${timestamp}_${randomId}_${safeFileName}`;
+    // 保留原始文件名，只进行安全化处理
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/g, '_');
 
     const fileBuffer = await file.arrayBuffer();
     const uploadResult = await driveAPI.uploadFile(
-      uniqueFileName,
+      safeFileName,
       fileBuffer,
       env.DRIVE_FOLDER_ID
     );
