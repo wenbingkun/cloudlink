@@ -969,14 +969,21 @@ export function getUnifiedPageHTML() {
                     authManager.saveAuth(password);
                     isAuthenticated = true;
                     
-                    showToast('登录成功', 'success');
+                    showToast('🎉 登录成功', 'success');
                     switchToAdmin();
                 } else {
-                    const error = await response.json();
-                    showToast(error.error || '登录失败', 'error');
+                    let errorMsg = '登录失败';
+                    try {
+                        const error = await response.json();
+                        errorMsg = getFriendlyErrorMessage(response.status, error.error || '');
+                    } catch (e) {
+                        errorMsg = getFriendlyErrorMessage(response.status, '');
+                    }
+                    showToast('🔐 ' + errorMsg, 'error');
                 }
             } catch (error) {
-                showToast('登录失败：' + error.message, 'error');
+                const errorMsg = getFriendlyErrorMessage(0, error.message);
+                showToast('🔐 ' + errorMsg, 'error');
             }
         }
         
@@ -1292,18 +1299,25 @@ export function getUnifiedPageHTML() {
                     fileObj.downloadUrl = result.downloadUrl;
                     fileObj.fileId = result.fileId;
                 } else {
-                    const error = await response.json();
+                    let errorMessage = '上传失败';
+                    try {
+                        const error = await response.json();
+                        errorMessage = getFriendlyErrorMessage(response.status, error.error || '');
+                    } catch (e) {
+                        errorMessage = getFriendlyErrorMessage(response.status, '');
+                    }
+                    
                     fileObj.status = 'error';
-                    fileObj.error = error.error || '上传失败';
+                    fileObj.error = errorMessage;
                     
                     // 如果是密码错误，清除缓存的密码
-                    if (error.error && error.error.includes('密码') || error.error && error.error.includes('认证')) {
+                    if (errorMessage.includes('密码') || errorMessage.includes('认证')) {
                         uploadPassword = null;
                     }
                 }
             } catch (error) {
                 fileObj.status = 'error';
-                fileObj.error = error.message;
+                fileObj.error = getFriendlyErrorMessage(0, error.message);
             }
             
             renderFileQueue();
@@ -1329,10 +1343,12 @@ export function getUnifiedPageHTML() {
                     updateStats();
                     renderFiles();
                 } else {
-                    showToast('加载文件列表失败', 'error');
+                    const errorMsg = getFriendlyErrorMessage(response.status, '加载文件列表失败');
+                    showToast(errorMsg, 'error');
                 }
             } catch (error) {
-                showToast('加载文件列表失败：' + error.message, 'error');
+                const errorMsg = getFriendlyErrorMessage(0, error.message);
+                showToast('📂 ' + errorMsg, 'error');
             }
         }
         
@@ -1468,13 +1484,15 @@ export function getUnifiedPageHTML() {
                 });
                 
                 if (response.ok) {
-                    showToast('文件删除成功', 'success');
+                    showToast('🗑️ 文件删除成功', 'success');
                     loadFiles();
                 } else {
-                    showToast('删除失败', 'error');
+                    const errorMsg = getFriendlyErrorMessage(response.status, '删除文件失败');
+                    showToast('🗑️ ' + errorMsg, 'error');
                 }
             } catch (error) {
-                showToast('删除失败：' + error.message, 'error');
+                const errorMsg = getFriendlyErrorMessage(0, error.message);
+                showToast('🗑️ ' + errorMsg, 'error');
             }
         }
         
@@ -1497,16 +1515,79 @@ export function getUnifiedPageHTML() {
             try {
                 await Promise.all(promises);
                 selectedFiles.clear();
-                showToast('批量删除成功', 'success');
+                showToast('🗑️ 批量删除成功', 'success');
                 loadFiles();
             } catch (error) {
-                showToast('批量删除失败：' + error.message, 'error');
+                const errorMsg = getFriendlyErrorMessage(0, error.message);
+                showToast('🗑️ 批量删除失败：' + errorMsg, 'error');
             }
         }
         
         function previewFile(fileId, fileName) {
             const downloadUrl = \`/d/\${fileId}\`;
             window.open(downloadUrl, '_blank');
+        }
+        
+        // 友好错误信息处理函数
+        function getFriendlyErrorMessage(statusCode, originalError) {
+            // 根据状态码提供友好提示
+            switch (statusCode) {
+                case 400:
+                    if (originalError.includes('文件大小超过限制')) {
+                        return '⚠️ 文件太大了！请选择小于 2GB 的文件';
+                    }
+                    if (originalError.includes('不支持的文件类型')) {
+                        return '❌ 不支持这种文件格式，请检查文件扩展名';
+                    }
+                    if (originalError.includes('未选择文件')) {
+                        return '📁 请选择要上传的文件';
+                    }
+                    if (originalError.includes('认证失败') || originalError.includes('密码错误')) {
+                        return '🔐 密码错误，请重新输入正确的上传密码';
+                    }
+                    return '❌ 文件格式或内容有问题：' + originalError;
+                
+                case 401:
+                    return '🔐 身份验证失败，请检查密码或重新登录';
+                
+                case 403:
+                    return '⛔ 没有上传权限，请联系管理员';
+                
+                case 413:
+                    return '📦 文件太大！请选择小于 2GB 的文件';
+                
+                case 429:
+                    return '⏰ 上传太频繁了，请稍后再试';
+                
+                case 500:
+                    return '🔧 服务器出了点问题，请稍后重试';
+                
+                case 502:
+                case 503:
+                    return '🌐 服务暂时不可用，请稍后重试';
+                
+                case 504:
+                    return '⏱️ 上传超时，请检查网络连接后重试';
+                
+                default:
+                    // 网络错误或其他异常
+                    if (statusCode === 0) {
+                        if (originalError.includes('Failed to fetch') || originalError.includes('NetworkError')) {
+                            return '🌐 网络连接失败，请检查网络后重试';
+                        }
+                        if (originalError.includes('timeout')) {
+                            return '⏱️ 连接超时，请检查网络连接';
+                        }
+                        return '🔗 网络错误：' + originalError;
+                    }
+                    
+                    // 如果有原始错误信息，优化显示
+                    if (originalError) {
+                        return '❗ ' + originalError;
+                    }
+                    
+                    return '❌ 上传失败，请重试';
+            }
         }
         
         // 工具函数
