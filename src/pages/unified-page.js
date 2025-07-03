@@ -1013,33 +1013,88 @@ export function getUnifiedPageHTML() {
             fileQueue.forEach(fileObj => {
                 const item = document.createElement('div');
                 item.className = 'file-item';
-                item.innerHTML = \`
-                    <div class="file-info">
-                        <div class="file-name">\${fileObj.name}</div>
-                        <div class="file-size">\${formatFileSize(fileObj.size)}</div>
-                        <div class="file-status">\${getStatusText(fileObj.status)}</div>
-                        \${fileObj.status === 'uploading' ? \`
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: \${fileObj.progress}%"></div>
-                            </div>
-                        \` : ''}
-                        \${fileObj.status === 'success' && fileObj.downloadUrl ? \`
-                            <div style="background: rgba(102, 126, 234, 0.1); padding: 8px; border-radius: 8px; margin-top: 8px;">
-                                <div style="color: #4caf50; font-weight: 600; margin-bottom: 4px;">✅ 上传成功</div>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="text" value="\${fileObj.downloadUrl}" readonly style="flex: 1; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                                    <button onclick="copyToClipboard('\${fileObj.downloadUrl}')" class="btn btn-secondary btn-xs">复制</button>
-                                </div>
-                            </div>
-                        \` : ''}
-                    </div>
-                    <div class="file-actions">
-                        \${fileObj.status === 'pending' ? \`
-                            <button onclick="removeFromQueue('\${fileObj.id}')" class="btn btn-danger btn-sm">移除</button>
-                        \` : ''}
-                    </div>
-                \`;
                 
+                // 创建文件信息容器
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'file-info';
+                
+                // 文件名
+                const fileName = document.createElement('div');
+                fileName.className = 'file-name';
+                fileName.textContent = fileObj.name;
+                fileInfo.appendChild(fileName);
+                
+                // 文件大小
+                const fileSize = document.createElement('div');
+                fileSize.className = 'file-size';
+                fileSize.textContent = formatFileSize(fileObj.size);
+                fileInfo.appendChild(fileSize);
+                
+                // 文件状态
+                const fileStatus = document.createElement('div');
+                fileStatus.className = 'file-status';
+                fileStatus.textContent = getStatusText(fileObj.status);
+                fileInfo.appendChild(fileStatus);
+                
+                // 进度条（上传中）
+                if (fileObj.status === 'uploading') {
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'progress-bar';
+                    progressBar.style.marginTop = '8px';
+                    
+                    const progressFill = document.createElement('div');
+                    progressFill.className = 'progress-fill';
+                    progressFill.style.width = fileObj.progress + '%';
+                    
+                    progressBar.appendChild(progressFill);
+                    fileInfo.appendChild(progressBar);
+                }
+                
+                // 下载链接（上传成功）
+                if (fileObj.status === 'success' && fileObj.downloadUrl) {
+                    const successContainer = document.createElement('div');
+                    successContainer.style.cssText = 'background: rgba(102, 126, 234, 0.1); padding: 8px; border-radius: 8px; margin-top: 8px;';
+                    
+                    const successText = document.createElement('div');
+                    successText.style.cssText = 'color: #4caf50; font-weight: 600; margin-bottom: 4px;';
+                    successText.textContent = '✅ 上传成功';
+                    successContainer.appendChild(successText);
+                    
+                    const linkContainer = document.createElement('div');
+                    linkContainer.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+                    
+                    const linkInput = document.createElement('input');
+                    linkInput.type = 'text';
+                    linkInput.value = fileObj.downloadUrl;
+                    linkInput.readOnly = true;
+                    linkInput.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;';
+                    
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'btn btn-secondary btn-xs';
+                    copyBtn.textContent = '复制';
+                    copyBtn.onclick = () => copyToClipboard(fileObj.downloadUrl);
+                    
+                    linkContainer.appendChild(linkInput);
+                    linkContainer.appendChild(copyBtn);
+                    successContainer.appendChild(linkContainer);
+                    fileInfo.appendChild(successContainer);
+                }
+                
+                item.appendChild(fileInfo);
+                
+                // 文件操作按钮
+                const fileActions = document.createElement('div');
+                fileActions.className = 'file-actions';
+                
+                if (fileObj.status === 'pending') {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'btn btn-danger btn-sm';
+                    removeBtn.textContent = '移除';
+                    removeBtn.onclick = () => removeFromQueue(fileObj.id);
+                    fileActions.appendChild(removeBtn);
+                }
+                
+                item.appendChild(fileActions);
                 container.appendChild(item);
             });
         }
