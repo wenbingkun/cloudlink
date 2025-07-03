@@ -500,6 +500,109 @@ export function getUnifiedPageHTML() {
             to { transform: translateX(0); opacity: 1; }
         }
         
+        /* 密码输入模态框样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .modal-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 400px;
+            width: 90%;
+            animation: scaleIn 0.3s ease;
+        }
+        
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .modal-description {
+            color: #666;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        
+        .modal-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            font-size: 16px;
+            margin-bottom: 25px;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+        }
+        
+        .modal-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .modal-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .modal-btn-secondary {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+        }
+        
+        .modal-btn-secondary:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+        
         /* 响应式设计 */
         @media (max-width: 768px) {
             .main-container {
@@ -633,6 +736,19 @@ export function getUnifiedPageHTML() {
         </div>
     </div>
 
+    <!-- 密码输入模态框 -->
+    <div id="passwordModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-title">输入上传密码</div>
+            <div class="modal-description">请输入上传密码以继续上传文件</div>
+            <input type="password" id="modalPasswordInput" class="modal-input" placeholder="请输入上传密码">
+            <div class="modal-actions">
+                <button id="modalCancelBtn" class="modal-btn modal-btn-secondary">取消</button>
+                <button id="modalConfirmBtn" class="modal-btn modal-btn-primary">确认</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 全局变量
         let authManager = null;
@@ -643,6 +759,7 @@ export function getUnifiedPageHTML() {
         let filteredFiles = [];
         let selectedFiles = new Set();
         let isUploading = false;
+        let uploadPassword = null; // 缓存本次会话的上传密码
         
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -751,6 +868,15 @@ export function getUnifiedPageHTML() {
             document.getElementById('selectAllBtn').addEventListener('click', selectAll);
             document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
             document.getElementById('deleteSelectedBtn').addEventListener('click', deleteSelected);
+            
+            // 密码模态框相关
+            document.getElementById('modalCancelBtn').addEventListener('click', hidePasswordModal);
+            document.getElementById('modalConfirmBtn').addEventListener('click', confirmPassword);
+            document.getElementById('modalPasswordInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    confirmPassword();
+                }
+            });
         }
         
         // 检查认证状态
@@ -938,15 +1064,71 @@ export function getUnifiedPageHTML() {
             updateUploadButton();
         }
         
+        // 密码模态框相关函数
+        function showPasswordModal() {
+            return new Promise((resolve, reject) => {
+                const modal = document.getElementById('passwordModal');
+                const input = document.getElementById('modalPasswordInput');
+                
+                modal.style.display = 'flex';
+                input.value = '';
+                input.focus();
+                
+                // 保存回调函数到全局，供按钮事件使用
+                window.passwordModalResolve = resolve;
+                window.passwordModalReject = reject;
+            });
+        }
+        
+        function hidePasswordModal() {
+            const modal = document.getElementById('passwordModal');
+            modal.style.display = 'none';
+            
+            if (window.passwordModalReject) {
+                window.passwordModalReject(new Error('用户取消'));
+                window.passwordModalResolve = null;
+                window.passwordModalReject = null;
+            }
+        }
+        
+        function confirmPassword() {
+            const input = document.getElementById('modalPasswordInput');
+            const password = input.value.trim();
+            
+            if (!password) {
+                showToast('请输入密码', 'error');
+                return;
+            }
+            
+            const modal = document.getElementById('passwordModal');
+            modal.style.display = 'none';
+            
+            if (window.passwordModalResolve) {
+                window.passwordModalResolve(password);
+                window.passwordModalResolve = null;
+                window.passwordModalReject = null;
+            }
+        }
+        
         async function startUpload() {
             const pendingFiles = fileQueue.filter(f => f.status === 'pending');
             if (pendingFiles.length === 0) return;
+            
+            // 检查认证状态，如果未认证且没有缓存密码，则获取密码
+            const token = authManager.getCurrentToken();
+            if (!token && !uploadPassword) {
+                try {
+                    uploadPassword = await showPasswordModal();
+                } catch (error) {
+                    showToast('上传已取消', 'error');
+                    return;
+                }
+            }
             
             isUploading = true;
             updateUploadButton();
             
             const concurrentUploads = 3; // 并发上传数量
-            const uploadPromises = [];
             
             for (let i = 0; i < pendingFiles.length; i += concurrentUploads) {
                 const batch = pendingFiles.slice(i, i + concurrentUploads);
@@ -958,7 +1140,14 @@ export function getUnifiedPageHTML() {
             isUploading = false;
             updateUploadButton();
             
-            showToast('上传完成', 'success');
+            const successCount = fileQueue.filter(f => f.status === 'success').length;
+            const errorCount = fileQueue.filter(f => f.status === 'error').length;
+            
+            if (errorCount === 0) {
+                showToast(\`所有文件上传成功 (\${successCount}个)\`, 'success');
+            } else {
+                showToast(\`上传完成：成功 \${successCount}个，失败 \${errorCount}个\`, 'error');
+            }
         }
         
         async function uploadFile(fileObj) {
@@ -974,14 +1163,7 @@ export function getUnifiedPageHTML() {
                 if (token) {
                     formData.append('password', 'admin_authenticated');
                 } else {
-                    // 游客模式，需要上传密码
-                    const uploadPassword = prompt('请输入上传密码：');
-                    if (!uploadPassword) {
-                        fileObj.status = 'error';
-                        fileObj.error = '未输入密码';
-                        renderFileQueue();
-                        return;
-                    }
+                    // 游客模式，使用缓存的上传密码
                     formData.append('password', uploadPassword);
                 }
                 
@@ -1005,6 +1187,11 @@ export function getUnifiedPageHTML() {
                     const error = await response.json();
                     fileObj.status = 'error';
                     fileObj.error = error.error || '上传失败';
+                    
+                    // 如果是密码错误，清除缓存的密码
+                    if (error.error && error.error.includes('密码') || error.error && error.error.includes('认证')) {
+                        uploadPassword = null;
+                    }
                 }
             } catch (error) {
                 fileObj.status = 'error';
