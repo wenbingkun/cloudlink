@@ -6,17 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-const ALLOWED_EXTENSIONS = [
-  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
-  'mp4', 'avi', 'mov', 'wmv', 'flv', 'webm',
-  'mp3', 'wav', 'aac', 'flac', 'ogg',
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  'txt', 'md', 'rtf',
-  'zip', 'rar', '7z', 'tar', 'gz',
-  'exe', 'msi', 'dmg', 'pkg',
-  'json', 'xml', 'csv', 'sql'
-];
+// 从环境变量获取配置，如果不存在则使用默认值
+const getMaxFileSize = (env) => parseInt(env.MAX_FILE_SIZE || '104857600'); // 默认100MB
+const getAllowedExtensions = (env) => env.ALLOWED_EXTENSIONS ? 
+  env.ALLOWED_EXTENSIONS.toLowerCase().split(',') : 
+  ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'mp4', 'mp3'];
 
 export async function handleUpload(request, env, driveAPI, url) {
   try {
@@ -38,16 +32,22 @@ export async function handleUpload(request, env, driveAPI, url) {
       });
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      return new Response(JSON.stringify({ error: '文件大小超过限制（100MB）' }), { 
+    const maxFileSize = getMaxFileSize(env);
+    const allowedExtensions = getAllowedExtensions(env);
+
+    if (file.size > maxFileSize) {
+      const maxSizeMB = Math.round(maxFileSize / 1024 / 1024);
+      return new Response(JSON.stringify({ error: `文件大小超过限制（${maxSizeMB}MB）` }), { 
         status: 400, 
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
 
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    if (fileExtension && !ALLOWED_EXTENSIONS.includes(fileExtension)) {
-      return new Response(JSON.stringify({ error: '不支持的文件类型' }), { 
+    if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+      return new Response(JSON.stringify({ 
+        error: `不支持的文件类型。支持的类型：${allowedExtensions.join(', ')}` 
+      }), { 
         status: 400, 
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });

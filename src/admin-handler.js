@@ -48,7 +48,7 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
         id: file.id,
         name: file.name,
         size: file.size ? parseInt(file.size) : 0,
-        mimeType: file.mimeType,
+        mimeType: file.mimeType || 'application/octet-stream',
         createdTime: file.createdTime,
         downloadUrl: `${url.origin}/d/${file.id}`
       }));
