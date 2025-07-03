@@ -326,69 +326,240 @@ export function getUploadPageHTML() {
             box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
         }
         
-        .selected-file {
+        .file-queue {
+            display: none;
+            margin-bottom: 25px;
+        }
+        
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 0 5px;
+        }
+        
+        .queue-title {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 16px;
+        }
+        
+        .clear-queue-btn {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+        }
+        
+        .clear-queue-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+        }
+
+        .file-item {
             background: linear-gradient(135deg, rgba(33, 150, 243, 0.08) 0%, rgba(33, 150, 243, 0.04) 100%);
             border: 2px solid rgba(33, 150, 243, 0.3);
-            padding: 20px;
-            border-radius: 20px;
-            margin-bottom: 25px;
-            display: none;
+            padding: 15px 20px;
+            border-radius: 15px;
+            margin-bottom: 10px;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             transition: all 0.3s ease;
+            position: relative;
         }
         
-        .selected-file:hover {
+        .file-item:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(33, 150, 243, 0.15);
+        }
+        
+        .file-item.uploading {
+            border-color: rgba(255, 193, 7, 0.6);
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.08) 0%, rgba(255, 193, 7, 0.04) 100%);
+        }
+        
+        .file-item.success {
+            border-color: rgba(76, 175, 80, 0.6);
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(76, 175, 80, 0.04) 100%);
+        }
+        
+        .file-item.error {
+            border-color: rgba(244, 67, 54, 0.6);
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.08) 0%, rgba(244, 67, 54, 0.04) 100%);
         }
         
         .file-info {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
         
         .file-icon {
             font-size: 24px;
             color: #2196f3;
+            min-width: 24px;
         }
         
         .file-details {
             flex: 1;
+            min-width: 0;
         }
         
         .file-name {
             font-weight: 600;
             color: #333;
             margin-bottom: 4px;
+            word-break: break-all;
+            line-height: 1.3;
         }
         
         .file-size {
             color: #666;
             font-size: 14px;
         }
-
-        .admin-link {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
+        
+        .file-status {
+            color: #666;
+            font-size: 12px;
+            margin-top: 2px;
+        }
+        
+        .file-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .remove-file-btn {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 6px rgba(244, 67, 54, 0.3);
+        }
+        
+        .remove-file-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+        }
+        
+        .file-progress {
+            width: 100%;
+            height: 4px;
+            background-color: rgba(226, 232, 240, 0.6);
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+            display: none;
+        }
+        
+        .file-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            border-radius: 3px;
         }
 
-        .admin-link a {
-            color: #667eea;
+        .admin-button {
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             text-decoration: none;
-            font-size: 14px;
+            color: white;
+            font-size: 20px;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
         }
 
-        .admin-link a:hover {
-            text-decoration: underline;
+        .admin-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .admin-button:hover::before {
+            left: 100%;
+        }
+
+        .admin-button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-button:active {
+            transform: translateY(-1px) scale(1.02);
+        }
+
+        /* 悬浮提示 */
+        .admin-button::after {
+            content: '管理后台';
+            position: absolute;
+            bottom: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .admin-button:hover::after {
+            opacity: 1;
+            bottom: -40px;
         }
         
         @media (max-width: 768px) {
             body {
                 padding: 15px;
+            }
+            
+            .admin-button {
+                top: 20px;
+                right: 20px;
+                width: 45px;
+                height: 45px;
+                font-size: 18px;
             }
             
             .container {
@@ -423,6 +594,14 @@ export function getUploadPageHTML() {
         @media (max-width: 480px) {
             body {
                 padding: 10px;
+            }
+            
+            .admin-button {
+                top: 15px;
+                right: 15px;
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
             }
             
             .container {
@@ -473,19 +652,18 @@ export function getUploadPageHTML() {
         <div class="upload-area" id="uploadArea">
             <div class="upload-icon">📤</div>
             <div class="upload-text">点击选择文件或拖拽文件到此处</div>
-            <div style="font-size: 14px; color: #999; margin-top: 5px;">支持多种格式文件，最大2GB<br><span style="font-size: 12px; opacity: 0.8;">大文件自动分块上传，移动端20MB+，桌面端50MB+</span></div>
+            <div style="font-size: 14px; color: #999; margin-top: 5px;">支持图片、文档、音视频、代码等多种格式，最大2GB<br><span style="font-size: 12px; opacity: 0.8;">大文件自动分块上传，移动端20MB+，桌面端50MB+</span></div>
         </div>
         
-        <input type="file" id="fileInput" class="file-input">
+        <input type="file" id="fileInput" class="file-input" multiple>
         
-        <div class="selected-file" id="selectedFile">
-            <div class="file-info">
-                <div class="file-icon">📄</div>
-                <div class="file-details">
-                    <div class="file-name" id="fileName"></div>
-                    <div class="file-size" id="fileSize"></div>
-                </div>
+        <!-- 文件队列 -->
+        <div class="file-queue" id="fileQueue">
+            <div class="queue-header">
+                <div class="queue-title">上传队列 (<span id="queueCount">0</span>)</div>
+                <button class="clear-queue-btn" onclick="clearQueue()">清空队列</button>
             </div>
+            <div id="fileList"></div>
         </div>
         
         <input type="password" id="passwordInput" class="password-input" placeholder="请输入上传密码">
@@ -497,11 +675,12 @@ export function getUploadPageHTML() {
         </div>
         
         <div class="result" id="result"></div>
-
-        <div class="admin-link">
-            <a href="/admin">管理后台</a>
-        </div>
     </div>
+    
+    <!-- 管理后台按钮 -->
+    <a href="/admin" class="admin-button" title="管理后台">
+        ⚙️
+    </a>
 
     <script>
         const uploadArea = document.getElementById('uploadArea');
@@ -511,18 +690,20 @@ export function getUploadPageHTML() {
         const progressBar = document.getElementById('progressBar');
         const progressFill = document.getElementById('progressFill');
         const result = document.getElementById('result');
-        const selectedFile = document.getElementById('selectedFile');
-        const fileName = document.getElementById('fileName');
-        const fileSize = document.getElementById('fileSize');
+        const fileQueue = document.getElementById('fileQueue');
+        const fileList = document.getElementById('fileList');
+        const queueCount = document.getElementById('queueCount');
         
-        let selectedFileObj = null;
+        let selectedFiles = [];
+        let uploadId = 0;
 
         uploadArea.addEventListener('click', () => {
             fileInput.click();
         });
 
         fileInput.addEventListener('change', (e) => {
-            handleFileSelect(e.target.files[0]);
+            handleFileSelect(Array.from(e.target.files));
+            e.target.value = ''; // 清空input，允许重复选择相同文件
         });
 
         uploadArea.addEventListener('dragover', (e) => {
@@ -538,28 +719,111 @@ export function getUploadPageHTML() {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
             
-            const files = e.dataTransfer.files;
+            const files = Array.from(e.dataTransfer.files);
             if (files.length > 0) {
-                handleFileSelect(files[0]);
+                handleFileSelect(files);
             }
         });
 
-        function handleFileSelect(file) {
-            if (!file) return;
+        function handleFileSelect(files) {
+            if (!files || files.length === 0) return;
             
-            selectedFileObj = file;
+            files.forEach(file => {
+                const fileId = ++uploadId;
+                const fileObj = {
+                    id: fileId,
+                    file: file,
+                    status: 'pending', // pending, uploading, success, error
+                    progress: 0,
+                    downloadUrl: null,
+                    error: null
+                };
+                
+                selectedFiles.push(fileObj);
+                addFileToQueue(fileObj);
+            });
             
-            fileName.textContent = file.name;
-            fileSize.textContent = formatFileSize(file.size);
-            selectedFile.style.display = 'block';
+            updateUI();
+            result.style.display = 'none';
+        }
+        
+        function addFileToQueue(fileObj) {
+            const fileElement = document.createElement('div');
+            fileElement.className = 'file-item';
+            fileElement.id = \`file-\${fileObj.id}\`;
             
-            uploadArea.innerHTML = \`
-                <div class="upload-icon">✅</div>
-                <div class="upload-text">已选择文件: \${file.name}</div>
-                <div style="font-size: 14px; color: #999;">点击重新选择</div>
+            fileElement.innerHTML = \`
+                <div class="file-info">
+                    <div class="file-icon">\${getFileIcon(fileObj.file.type)}</div>
+                    <div class="file-details">
+                        <div class="file-name">\${fileObj.file.name}</div>
+                        <div class="file-size">\${formatFileSize(fileObj.file.size)}</div>
+                        <div class="file-status">等待上传</div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="remove-file-btn" onclick="removeFileFromQueue(\${fileObj.id})" title="移除文件">×</button>
+                    </div>
+                </div>
+                <div class="file-progress">
+                    <div class="file-progress-fill" style="width: 0%"></div>
+                </div>
             \`;
             
-            result.style.display = 'none';
+            fileList.appendChild(fileElement);
+        }
+        
+        function removeFileFromQueue(fileId) {
+            selectedFiles = selectedFiles.filter(f => f.id !== fileId);
+            const fileElement = document.getElementById(\`file-\${fileId}\`);
+            if (fileElement) {
+                fileElement.remove();
+            }
+            updateUI();
+        }
+        
+        function clearQueue() {
+            selectedFiles = [];
+            fileList.innerHTML = '';
+            updateUI();
+        }
+        
+        function updateUI() {
+            const fileCount = selectedFiles.length;
+            queueCount.textContent = fileCount;
+            
+            if (fileCount > 0) {
+                fileQueue.style.display = 'block';
+                uploadArea.innerHTML = \`
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">已选择 \${fileCount} 个文件</div>
+                    <div style="font-size: 14px; color: #999;">点击添加更多文件或拖拽到此处</div>
+                \`;
+                uploadBtn.textContent = \`上传 \${fileCount} 个文件\`;
+            } else {
+                fileQueue.style.display = 'none';
+                uploadArea.innerHTML = \`
+                    <div class="upload-icon">📤</div>
+                    <div class="upload-text">点击选择文件或拖拽文件到此处</div>
+                    <div style="font-size: 14px; color: #999; margin-top: 5px;">支持图片、文档、音视频、代码等多种格式，最大2GB<br><span style="font-size: 12px; opacity: 0.8;">大文件自动分块上传，移动端20MB+，桌面端50MB+</span></div>
+                \`;
+                uploadBtn.textContent = '上传文件';
+            }
+        }
+        
+        function getFileIcon(mimeType) {
+            if (!mimeType) return '📄';
+            
+            if (mimeType.startsWith('image/')) return '🖼️';
+            if (mimeType.startsWith('video/')) return '🎬';
+            if (mimeType.startsWith('audio/')) return '🎵';
+            if (mimeType.includes('pdf')) return '📕';
+            if (mimeType.includes('document') || mimeType.includes('word')) return '📝';
+            if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
+            if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
+            if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) return '🗜️';
+            if (mimeType.includes('text/')) return '📃';
+            
+            return '📄';
         }
 
         function formatFileSize(bytes) {
@@ -571,7 +835,7 @@ export function getUploadPageHTML() {
         }
 
         uploadBtn.addEventListener('click', async () => {
-            if (!selectedFileObj) {
+            if (selectedFiles.length === 0) {
                 showResult('请先选择文件', 'error');
                 return;
             }
@@ -583,36 +847,131 @@ export function getUploadPageHTML() {
             }
 
             uploadBtn.disabled = true;
-            uploadBtn.textContent = '上传中...';
-            progressBar.style.display = 'block';
             result.style.display = 'none';
+            
+            // 批量上传文件
+            const pendingFiles = selectedFiles.filter(f => f.status === 'pending');
+            if (pendingFiles.length === 0) {
+                showResult('没有需要上传的文件', 'error');
+                uploadBtn.disabled = false;
+                return;
+            }
 
             try {
-                // 智能判断是否使用分块上传（移动端 20MB，桌面端 50MB）
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-            const chunkThreshold = isMobile ? 20 * 1024 * 1024 : 50 * 1024 * 1024;
-                const useChunkedUpload = selectedFileObj.size > chunkThreshold;
-
-                if (useChunkedUpload) {
-                    await uploadFileChunked(selectedFileObj, password);
-                } else {
-                    await uploadFileNormal(selectedFileObj, password);
-                }
+                await uploadMultipleFiles(pendingFiles, password);
             } catch (error) {
-                console.error('上传错误:', error);
-                showResult('网络错误：' + error.message, 'error');
+                console.error('批量上传错误:', error);
+                showResult('上传过程中发生错误：' + error.message, 'error');
             } finally {
                 uploadBtn.disabled = false;
-                uploadBtn.textContent = '上传文件';
-                progressBar.style.display = 'none';
-                progressFill.style.width = '0%';
+                updateUploadButtonText();
             }
         });
+        
+        function updateUploadButtonText() {
+            const pendingCount = selectedFiles.filter(f => f.status === 'pending').length;
+            const uploadingCount = selectedFiles.filter(f => f.status === 'uploading').length;
+            
+            if (uploadingCount > 0) {
+                uploadBtn.textContent = \`上传中... (\${uploadingCount})\`;
+            } else if (pendingCount > 0) {
+                uploadBtn.textContent = \`上传 \${pendingCount} 个文件\`;
+            } else {
+                uploadBtn.textContent = '上传文件';
+            }
+        }
+        
+        async function uploadMultipleFiles(files, password) {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+            const chunkThreshold = isMobile ? 20 * 1024 * 1024 : 50 * 1024 * 1024;
+            
+            // 并发上传，最多同时上传3个文件
+            const concurrency = 3;
+            const uploadPromises = [];
+            
+            for (let i = 0; i < files.length; i += concurrency) {
+                const batch = files.slice(i, i + concurrency);
+                const batchPromises = batch.map(async (fileObj) => {
+                    try {
+                        updateFileStatus(fileObj.id, 'uploading', 0);
+                        const useChunkedUpload = fileObj.file.size > chunkThreshold;
+                        
+                        if (useChunkedUpload) {
+                            await uploadFileChunked(fileObj, password);
+                        } else {
+                            await uploadFileNormal(fileObj, password);
+                        }
+                        
+                        updateFileStatus(fileObj.id, 'success', 100);
+                    } catch (error) {
+                        console.error(\`文件 \${fileObj.file.name} 上传失败:\`, error);
+                        updateFileStatus(fileObj.id, 'error', 0, error.message);
+                    }
+                });
+                
+                uploadPromises.push(...batchPromises);
+                
+                // 等待当前批次完成再开始下一批次
+                await Promise.all(batchPromises);
+                updateUploadButtonText();
+            }
+            
+            await Promise.all(uploadPromises);
+            
+            // 显示上传结果汇总
+            const successCount = selectedFiles.filter(f => f.status === 'success').length;
+            const errorCount = selectedFiles.filter(f => f.status === 'error').length;
+            
+            if (errorCount === 0) {
+                showResult(\`所有文件上传成功！共 \${successCount} 个文件\`, 'success');
+            } else {
+                showResult(\`上传完成：\${successCount} 个成功，\${errorCount} 个失败\`, errorCount > successCount ? 'error' : 'success');
+            }
+        }
+        
+        function updateFileStatus(fileId, status, progress = 0, error = null) {
+            const fileObj = selectedFiles.find(f => f.id === fileId);
+            if (!fileObj) return;
+            
+            fileObj.status = status;
+            fileObj.progress = progress;
+            fileObj.error = error;
+            
+            const fileElement = document.getElementById(\`file-\${fileId}\`);
+            if (!fileElement) return;
+            
+            // 更新样式
+            fileElement.className = \`file-item \${status}\`;
+            
+            // 更新状态文本
+            const statusElement = fileElement.querySelector('.file-status');
+            const progressElement = fileElement.querySelector('.file-progress');
+            const progressFill = fileElement.querySelector('.file-progress-fill');
+            
+            switch (status) {
+                case 'uploading':
+                    statusElement.textContent = \`上传中... \${progress}%\`;
+                    progressElement.style.display = 'block';
+                    progressFill.style.width = progress + '%';
+                    break;
+                case 'success':
+                    statusElement.textContent = '上传成功';
+                    progressElement.style.display = 'none';
+                    break;
+                case 'error':
+                    statusElement.textContent = \`上传失败: \${error || '未知错误'}\`;
+                    progressElement.style.display = 'none';
+                    break;
+                default:
+                    statusElement.textContent = '等待上传';
+                    progressElement.style.display = 'none';
+            }
+        }
 
         // 普通上传
-        async function uploadFileNormal(file, password) {
+        async function uploadFileNormal(fileObj, password) {
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', fileObj.file);
             formData.append('password', password);
 
             const response = await fetch('/upload', {
@@ -620,27 +979,20 @@ export function getUploadPageHTML() {
                 body: formData
             });
 
-            progressFill.style.width = '100%';
+            updateFileStatus(fileObj.id, 'uploading', 100);
 
             const data = await response.json();
             
             if (response.ok && data.success) {
-                showResult(\`
-                    <strong>上传成功！</strong><br>
-                    文件名: \${data.fileName}<br>
-                    文件大小: \${formatFileSize(data.fileSize)}<br>
-                    <div class="download-link" id="downloadLink">\${data.downloadUrl}</div>
-                    <button class="copy-btn" onclick="copyToClipboard()">复制链接</button>
-                \`, 'success');
-                
-                window.currentDownloadUrl = data.downloadUrl;
+                fileObj.downloadUrl = data.downloadUrl;
+                updateFileStatus(fileObj.id, 'success', 100);
             } else {
-                showResult(data.error || '上传失败', 'error');
+                throw new Error(data.error || '上传失败');
             }
         }
 
         // 分块上传
-        async function uploadFileChunked(file, password) {
+        async function uploadFileChunked(fileObj, password) {
             // 开始分块上传会话
             const startResponse = await fetch('/chunked-upload/start', {
                 method: 'POST',
@@ -648,8 +1000,8 @@ export function getUploadPageHTML() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    fileName: file.name,
-                    fileSize: file.size,
+                    fileName: fileObj.file.name,
+                    fileSize: fileObj.file.size,
                     password: password
                 })
             });
@@ -657,27 +1009,24 @@ export function getUploadPageHTML() {
             const startData = await startResponse.json();
             
             if (!startResponse.ok) {
-                showResult(startData.error || '启动上传失败', 'error');
-                return;
+                throw new Error(startData.error || '启动上传失败');
             }
 
             const { sessionId, chunkSize } = startData;
-            const totalChunks = Math.ceil(file.size / chunkSize);
-            
-            uploadBtn.textContent = \`上传中... (0/\${totalChunks})\`;
+            const totalChunks = Math.ceil(fileObj.file.size / chunkSize);
 
             // 逐个上传文件块
             let uploadedBytes = 0;
             
             for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
                 const start = chunkIndex * chunkSize;
-                const end = Math.min(start + chunkSize, file.size);
-                const chunk = file.slice(start, end);
+                const end = Math.min(start + chunkSize, fileObj.file.size);
+                const chunk = fileObj.file.slice(start, end);
 
                 const chunkResponse = await fetch(\`/chunked-upload/chunk/\${sessionId}\`, {
                     method: 'PUT',
                     headers: {
-                        'Content-Range': \`bytes \${start}-\${end - 1}/\${file.size}\`
+                        'Content-Range': \`bytes \${start}-\${end - 1}/\${fileObj.file.size}\`
                     },
                     body: chunk
                 });
@@ -685,27 +1034,18 @@ export function getUploadPageHTML() {
                 const chunkData = await chunkResponse.json();
                 
                 if (!chunkResponse.ok) {
-                    showResult(chunkData.error || '分块上传失败', 'error');
-                    return;
+                    throw new Error(chunkData.error || '分块上传失败');
                 }
 
                 uploadedBytes = chunkData.bytesUploaded || end;
-                const progress = Math.round((uploadedBytes / file.size) * 100);
+                const progress = Math.round((uploadedBytes / fileObj.file.size) * 100);
                 
-                progressFill.style.width = progress + '%';
-                uploadBtn.textContent = \`上传中... (\${chunkIndex + 1}/\${totalChunks}) \${progress}%\`;
+                updateFileStatus(fileObj.id, 'uploading', progress);
 
                 if (chunkData.completed) {
                     // 上传完成
-                    showResult(\`
-                        <strong>上传成功！</strong><br>
-                        文件名: \${chunkData.fileName}<br>
-                        文件大小: \${formatFileSize(chunkData.fileSize)}<br>
-                        <div class="download-link" id="downloadLink">\${chunkData.downloadUrl}</div>
-                        <button class="copy-btn" onclick="copyToClipboard()">复制链接</button>
-                    \`, 'success');
-                    
-                    window.currentDownloadUrl = chunkData.downloadUrl;
+                    fileObj.downloadUrl = chunkData.downloadUrl;
+                    updateFileStatus(fileObj.id, 'success', 100);
                     return;
                 }
             }

@@ -369,6 +369,114 @@ export function getAdminPageHTML() {
             transform: none;
         }
         
+        .toolbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 25px 30px;
+            border-radius: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.2);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            position: relative;
+            z-index: 1;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .search-section {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex: 1;
+        }
+        
+        .search-input {
+            flex: 1;
+            max-width: 300px;
+            padding: 12px 18px;
+            border: 2px solid rgba(226, 232, 240, 0.8);
+            border-radius: 12px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        
+        .filter-select {
+            padding: 12px 15px;
+            border: 2px solid rgba(226, 232, 240, 0.8);
+            border-radius: 12px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        
+        .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .batch-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .batch-btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .batch-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .batch-delete {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+        }
+        
+        .batch-delete:hover {
+            box-shadow: 0 8px 25px rgba(244, 67, 54, 0.4);
+        }
+        
+        .file-checkbox {
+            margin-right: 15px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .file-item.selected {
+            border-color: rgba(102, 126, 234, 0.6);
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(102, 126, 234, 0.04) 100%);
+        }
+        
         .preview-btn {
             background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
             color: white;
@@ -544,6 +652,22 @@ export function getAdminPageHTML() {
                 gap: 20px;
             }
             
+            .toolbar {
+                flex-direction: column;
+                gap: 15px;
+                padding: 20px;
+            }
+            
+            .search-section {
+                flex-direction: column;
+                width: 100%;
+                gap: 10px;
+            }
+            
+            .search-input {
+                max-width: none;
+            }
+            
             .preview-content {
                 max-width: 95vw;
                 max-height: 95vh;
@@ -567,7 +691,10 @@ export function getAdminPageHTML() {
     <div id="adminSection" style="display: none;">
         <div class="header">
             <h1>📁 CloudLink 管理后台</h1>
-            <a href="/" class="back-btn">返回上传页面</a>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <button onclick="logout()" class="back-btn" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); padding: 12px 20px;">🚪 退出登录</button>
+                <a href="/" class="back-btn">返回上传页面</a>
+            </div>
         </div>
         
         <div class="stats">
@@ -580,8 +707,39 @@ export function getAdminPageHTML() {
                 <div class="stat-label">总大小</div>
             </div>
             <div class="stat-item">
+                <div class="stat-number" id="selectedCount">0</div>
+                <div class="stat-label">已选择</div>
+            </div>
+            <div class="stat-item">
                 <div class="stat-number" id="currentPage">1</div>
                 <div class="stat-label">当前页码</div>
+            </div>
+        </div>
+        
+        <!-- 搜索和筛选工具栏 -->
+        <div class="toolbar">
+            <div class="search-section">
+                <input type="text" id="searchInput" class="search-input" placeholder="搜索文件名...">
+                <select id="typeFilter" class="filter-select">
+                    <option value="">所有类型</option>
+                    <option value="image">图片</option>
+                    <option value="video">视频</option>
+                    <option value="audio">音频</option>
+                    <option value="document">文档</option>
+                    <option value="archive">压缩包</option>
+                    <option value="text">文本</option>
+                    <option value="other">其他</option>
+                </select>
+                <select id="sortBy" class="filter-select">
+                    <option value="name">按名称排序</option>
+                    <option value="size">按大小排序</option>
+                    <option value="date">按时间排序</option>
+                </select>
+            </div>
+            <div class="batch-actions" id="batchActions" style="display: none;">
+                <button class="batch-btn" onclick="selectAll()">全选</button>
+                <button class="batch-btn" onclick="selectNone()">取消选择</button>
+                <button class="batch-btn batch-delete" onclick="batchDelete()">批量删除</button>
             </div>
         </div>
         
@@ -612,9 +770,119 @@ export function getAdminPageHTML() {
     </div>
 
     <script>
-        let currentPassword = '';
+        // 导入认证管理器（内联版本）
+        class AuthManager {
+            constructor() {
+                this.tokenKey = 'cloudlink_auth_token';
+                this.tokenExpiry = 'cloudlink_token_expiry';
+                this.sessionDuration = 24 * 60 * 60 * 1000; // 24小时
+            }
+
+            hashPassword(password) {
+                let hash = 0;
+                const salt = 'cloudlink_salt_2024';
+                const input = password + salt;
+                
+                for (let i = 0; i < input.length; i++) {
+                    const char = input.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                
+                return hash.toString(36);
+            }
+
+            saveAuth(token) {
+                const expiry = Date.now() + this.sessionDuration;
+                localStorage.setItem(this.tokenKey, token);
+                localStorage.setItem(this.tokenExpiry, expiry.toString());
+            }
+
+            checkLocalAuth() {
+                const token = localStorage.getItem(this.tokenKey);
+                const expiry = localStorage.getItem(this.tokenExpiry);
+                
+                if (!token || !expiry) {
+                    return null;
+                }
+                
+                if (Date.now() > parseInt(expiry)) {
+                    this.clearAuth();
+                    return null;
+                }
+                
+                return token;
+            }
+
+            clearAuth() {
+                localStorage.removeItem(this.tokenKey);
+                localStorage.removeItem(this.tokenExpiry);
+            }
+
+            getCurrentToken() {
+                return localStorage.getItem(this.tokenKey);
+            }
+
+            isAuthenticated() {
+                const expiry = localStorage.getItem(this.tokenExpiry);
+                return expiry && Date.now() < parseInt(expiry);
+            }
+        }
+
+        const authManager = new AuthManager();
+        let currentToken = '';
         let currentPageToken = null;
         let nextPageToken = null;
+        let allFiles = [];
+        let filteredFiles = [];
+        let selectedFiles = new Set();
+        
+        // 页面加载时检查认证状态
+        window.addEventListener('load', () => {
+            checkExistingAuth();
+            setupEventListeners();
+        });
+        
+        function setupEventListeners() {
+            // 搜索输入框
+            document.getElementById('searchInput').addEventListener('input', applyFilters);
+            // 类型筛选
+            document.getElementById('typeFilter').addEventListener('change', applyFilters);
+            // 排序
+            document.getElementById('sortBy').addEventListener('change', applyFilters);
+        }
+        
+        async function checkExistingAuth() {
+            const localToken = authManager.checkLocalAuth();
+            
+            if (localToken) {
+                try {
+                    const response = await fetch('/admin/verify-token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ token: localToken })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.valid) {
+                            currentToken = localToken;
+                            document.getElementById('authSection').style.display = 'none';
+                            document.getElementById('adminSection').style.display = 'block';
+                            loadFileList();
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.log('Token验证失败', error);
+                }
+                
+                // Token无效，清除本地存储
+                authManager.clearAuth();
+            }
+        }
         
         async function authenticate() {
             const password = document.getElementById('adminPassword').value;
@@ -629,7 +897,10 @@ export function getAdminPageHTML() {
                 });
                 
                 if (response.ok) {
-                    currentPassword = password;
+                    const data = await response.json();
+                    currentToken = data.token;
+                    authManager.saveAuth(data.token);
+                    
                     document.getElementById('authSection').style.display = 'none';
                     document.getElementById('adminSection').style.display = 'block';
                     loadFileList();
@@ -641,10 +912,17 @@ export function getAdminPageHTML() {
             }
         }
         
+        // 添加登出功能
+        function logout() {
+            authManager.clearAuth();
+            currentToken = '';
+            document.getElementById('authSection').style.display = 'block';
+            document.getElementById('adminSection').style.display = 'none';
+        }
+        
         async function loadFileList(pageToken = null) {
             try {
                 const params = new URLSearchParams({
-                    password: currentPassword,
                     pageSize: '20'
                 });
                 
@@ -652,11 +930,16 @@ export function getAdminPageHTML() {
                     params.append('pageToken', pageToken);
                 }
                 
-                const response = await fetch(\`/admin/files?\${params}\`);
+                const response = await fetch(\`/admin/files?\${params}\`, {
+                    headers: {
+                        'X-Auth-Token': currentToken
+                    }
+                });
                 const data = await response.json();
                 
                 if (response.ok) {
-                    displayFiles(data.files);
+                    allFiles = data.files;
+                    applyFilters();
                     updatePagination(data.nextPageToken);
                     updateStats(data);
                     document.getElementById('currentPage').textContent = currentPageToken ? '2+' : '1';
@@ -681,6 +964,63 @@ export function getAdminPageHTML() {
             loadFileList();
         }
 
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const typeFilter = document.getElementById('typeFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+            
+            // 筛选文件
+            filteredFiles = allFiles.filter(file => {
+                // 搜索筛选
+                const matchesSearch = file.name.toLowerCase().includes(searchTerm);
+                
+                // 类型筛选
+                let matchesType = true;
+                if (typeFilter) {
+                    const fileType = getFileCategory(file.mimeType);
+                    matchesType = fileType === typeFilter;
+                }
+                
+                return matchesSearch && matchesType;
+            });
+            
+            // 排序
+            filteredFiles.sort((a, b) => {
+                switch (sortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'size':
+                        return (b.size || 0) - (a.size || 0);
+                    case 'date':
+                        return new Date(b.createdTime) - new Date(a.createdTime);
+                    default:
+                        return 0;
+                }
+            });
+            
+            displayFiles(filteredFiles);
+            updateStats({ files: filteredFiles });
+        }
+        
+        function getFileCategory(mimeType) {
+            if (!mimeType) return 'other';
+            
+            if (mimeType.startsWith('image/')) return 'image';
+            if (mimeType.startsWith('video/')) return 'video';
+            if (mimeType.startsWith('audio/')) return 'audio';
+            if (mimeType.includes('pdf') || mimeType.includes('document') || 
+                mimeType.includes('word') || mimeType.includes('spreadsheet') || 
+                mimeType.includes('presentation')) return 'document';
+            if (mimeType.includes('zip') || mimeType.includes('rar') || 
+                mimeType.includes('archive') || mimeType.includes('7z') || 
+                mimeType.includes('tar') || mimeType.includes('gz')) return 'archive';
+            if (mimeType.includes('text/') || mimeType.includes('json') || 
+                mimeType.includes('xml') || mimeType.includes('html') || 
+                mimeType.includes('css') || mimeType.includes('javascript')) return 'text';
+            
+            return 'other';
+        }
+        
         function updatePagination(nextToken) {
             nextPageToken = nextToken;
             const paginationSection = document.getElementById('paginationSection');
@@ -706,13 +1046,19 @@ export function getAdminPageHTML() {
             }
             
             container.innerHTML = files.map(file => \`
-                <div class="file-item">
+                <div class="file-item \${selectedFiles.has(file.id) ? 'selected' : ''}" id="file-item-\${file.id}">
                     <div class="file-info">
-                        <div class="file-name" onclick="previewFile('\${file.id}', '\${file.name}', '\${file.mimeType}', '\${file.downloadUrl}')">\${getFileIcon(file.mimeType)} \${file.name}</div>
-                        <div class="file-meta">
-                            \${formatFileSize(file.size)} • 
-                            \${formatDate(file.createdTime)} • 
-                            \${getFileTypeLabel(file.mimeType)}
+                        <input type="checkbox" class="file-checkbox" 
+                               \${selectedFiles.has(file.id) ? 'checked' : ''} 
+                               onchange="toggleFileSelection('\${file.id}')">
+                        <div class="file-icon">\${getFileIcon(file.mimeType)}</div>
+                        <div class="file-details">
+                            <div class="file-name" onclick="previewFile('\${file.id}', '\${file.name}', '\${file.mimeType}', '\${file.downloadUrl}')">\${file.name}</div>
+                            <div class="file-meta">
+                                \${formatFileSize(file.size)} • 
+                                \${formatDate(file.createdTime)} • 
+                                \${getFileTypeLabel(file.mimeType)}
+                            </div>
                         </div>
                     </div>
                     <div class="file-actions">
@@ -737,6 +1083,128 @@ export function getAdminPageHTML() {
             document.getElementById('totalFiles').textContent = data.files.length;
             const totalSize = data.files.reduce((sum, file) => sum + (file.size || 0), 0);
             document.getElementById('totalSize').textContent = formatFileSize(totalSize);
+            
+            // 更新选择统计
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+            
+            // 显示/隐藏批量操作按钮
+            const batchActions = document.getElementById('batchActions');
+            if (selectedFiles.size > 0) {
+                batchActions.style.display = 'flex';
+            } else {
+                batchActions.style.display = 'none';
+            }
+        }
+        
+        function toggleFileSelection(fileId) {
+            if (selectedFiles.has(fileId)) {
+                selectedFiles.delete(fileId);
+            } else {
+                selectedFiles.add(fileId);
+            }
+            
+            // 更新文件项样式
+            const fileItem = document.getElementById(\`file-item-\${fileId}\`);
+            if (fileItem) {
+                if (selectedFiles.has(fileId)) {
+                    fileItem.classList.add('selected');
+                } else {
+                    fileItem.classList.remove('selected');
+                }
+            }
+            
+            updateStats({ files: filteredFiles });
+        }
+        
+        function selectAll() {
+            filteredFiles.forEach(file => {
+                selectedFiles.add(file.id);
+                const fileItem = document.getElementById(\`file-item-\${file.id}\`);
+                if (fileItem) {
+                    fileItem.classList.add('selected');
+                    const checkbox = fileItem.querySelector('.file-checkbox');
+                    if (checkbox) checkbox.checked = true;
+                }
+            });
+            updateStats({ files: filteredFiles });
+        }
+        
+        function selectNone() {
+            selectedFiles.clear();
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('selected');
+                const checkbox = item.querySelector('.file-checkbox');
+                if (checkbox) checkbox.checked = false;
+            });
+            updateStats({ files: filteredFiles });
+        }
+        
+        async function batchDelete() {
+            if (selectedFiles.size === 0) {
+                alert('请先选择要删除的文件');
+                return;
+            }
+            
+            const count = selectedFiles.size;
+            if (!confirm(\`确定要删除选中的 \${count} 个文件吗？此操作无法撤销。\`)) {
+                return;
+            }
+            
+            const fileIds = Array.from(selectedFiles);
+            let successCount = 0;
+            let errorCount = 0;
+            
+            // 显示进度
+            const batchActions = document.getElementById('batchActions');
+            const originalHTML = batchActions.innerHTML;
+            batchActions.innerHTML = \`<div style="color: #667eea;">正在删除文件... (0/\${count})</div>\`;
+            
+            try {
+                for (let i = 0; i < fileIds.length; i++) {
+                    const fileId = fileIds[i];
+                    try {
+                        const response = await fetch(\`/admin/delete/\${fileId}\`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Auth-Token': currentToken
+                            },
+                            body: JSON.stringify({})
+                        });
+                        
+                        if (response.ok) {
+                            successCount++;
+                            selectedFiles.delete(fileId);
+                            // 从列表中移除
+                            allFiles = allFiles.filter(f => f.id !== fileId);
+                        } else {
+                            errorCount++;
+                        }
+                    } catch (error) {
+                        errorCount++;
+                    }
+                    
+                    // 更新进度
+                    batchActions.innerHTML = \`<div style="color: #667eea;">正在删除文件... (\${i + 1}/\${count})</div>\`;
+                }
+                
+                // 恢复批量操作按钮
+                batchActions.innerHTML = originalHTML;
+                
+                // 刷新文件列表
+                applyFilters();
+                
+                // 显示结果
+                if (errorCount === 0) {
+                    alert(\`批量删除成功！共删除 \${successCount} 个文件\`);
+                } else {
+                    alert(\`删除完成：成功 \${successCount} 个，失败 \${errorCount} 个\`);
+                }
+                
+            } catch (error) {
+                batchActions.innerHTML = originalHTML;
+                alert('批量删除过程中发生错误：' + error.message);
+            }
         }
         
         function formatFileSize(bytes) {
@@ -758,15 +1226,36 @@ export function getAdminPageHTML() {
         function getFileIcon(mimeType) {
             if (!mimeType) return '📄';
             
-            if (mimeType.startsWith('image/')) return '🖼️';
+            // 图片文件
+            if (mimeType.startsWith('image/')) {
+                if (mimeType.includes('svg')) return '🎨';
+                return '🖼️';
+            }
+            
+            // 视频文件
             if (mimeType.startsWith('video/')) return '🎬';
+            
+            // 音频文件
             if (mimeType.startsWith('audio/')) return '🎵';
+            
+            // 文档类型
             if (mimeType.includes('pdf')) return '📕';
             if (mimeType.includes('document') || mimeType.includes('word')) return '📝';
             if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
             if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
-            if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) return '🗜️';
-            if (mimeType.includes('text/')) return '📃';
+            
+            // 代码文件
+            if (mimeType.includes('javascript') || mimeType.includes('json')) return '📜';
+            if (mimeType.includes('html') || mimeType.includes('xml')) return '🌐';
+            if (mimeType.includes('css')) return '🎨';
+            
+            // 压缩文件
+            if (mimeType.includes('zip') || mimeType.includes('rar') || 
+                mimeType.includes('7z') || mimeType.includes('tar') || 
+                mimeType.includes('gz') || mimeType.includes('archive')) return '🗜️';
+            
+            // 文本文件
+            if (mimeType.includes('text/') || mimeType.includes('markdown')) return '📃';
             
             return '📄';
         }
@@ -774,14 +1263,47 @@ export function getAdminPageHTML() {
         function getFileTypeLabel(mimeType) {
             if (!mimeType) return '未知类型';
             
-            if (mimeType.startsWith('image/')) return '图片';
-            if (mimeType.startsWith('video/')) return '视频';
-            if (mimeType.startsWith('audio/')) return '音频';
-            if (mimeType.includes('pdf')) return 'PDF';
-            if (mimeType.includes('document') || mimeType.includes('word')) return '文档';
-            if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '表格';
-            if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '演示文稿';
-            if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) return '压缩包';
+            if (mimeType.startsWith('image/')) {
+                if (mimeType.includes('svg')) return 'SVG图像';
+                if (mimeType.includes('webp')) return 'WebP图像';
+                if (mimeType.includes('tiff')) return 'TIFF图像';
+                if (mimeType.includes('bmp')) return 'BMP图像';
+                return '图片';
+            }
+            
+            if (mimeType.startsWith('video/')) {
+                if (mimeType.includes('mp4')) return 'MP4视频';
+                if (mimeType.includes('avi')) return 'AVI视频';
+                if (mimeType.includes('mov')) return 'MOV视频';
+                if (mimeType.includes('mkv')) return 'MKV视频';
+                return '视频';
+            }
+            
+            if (mimeType.startsWith('audio/')) {
+                if (mimeType.includes('mp3')) return 'MP3音频';
+                if (mimeType.includes('wav')) return 'WAV音频';
+                if (mimeType.includes('flac')) return 'FLAC音频';
+                return '音频';
+            }
+            
+            if (mimeType.includes('pdf')) return 'PDF文档';
+            if (mimeType.includes('document') || mimeType.includes('word')) return 'Word文档';
+            if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'Excel表格';
+            if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'PPT演示';
+            
+            if (mimeType.includes('javascript')) return 'JavaScript';
+            if (mimeType.includes('json')) return 'JSON';
+            if (mimeType.includes('html')) return 'HTML';
+            if (mimeType.includes('css')) return 'CSS';
+            if (mimeType.includes('xml')) return 'XML';
+            if (mimeType.includes('markdown')) return 'Markdown';
+            
+            if (mimeType.includes('zip')) return 'ZIP压缩';
+            if (mimeType.includes('rar')) return 'RAR压缩';
+            if (mimeType.includes('7z')) return '7Z压缩';
+            if (mimeType.includes('tar')) return 'TAR归档';
+            if (mimeType.includes('gz')) return 'GZ压缩';
+            
             if (mimeType.includes('text/')) return '文本';
             
             return mimeType.split('/')[0] || '未知';
@@ -812,8 +1334,9 @@ export function getAdminPageHTML() {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Auth-Token': currentToken
                     },
-                    body: JSON.stringify({ password: currentPassword })
+                    body: JSON.stringify({})
                 });
                 
                 if (response.ok) {

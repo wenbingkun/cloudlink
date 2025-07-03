@@ -1,10 +1,13 @@
 import { getAdminPageHTML } from './pages/admin-page.js';
+import { ServerAuthManager } from './auth-manager.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
 };
+
+const authManager = new ServerAuthManager();
 
 export async function handleAdmin(request, env, driveAPI, path, url) {
   try {
@@ -18,7 +21,13 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
       const data = await request.json();
       
       if (data.password === env.ADMIN_PASSWORD) {
-        return new Response(JSON.stringify({ success: true }), {
+        // 生成新token
+        const token = authManager.generateToken(data.password);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          token: token,
+          expiresIn: 24 * 60 * 60 * 1000 // 24小时
+        }), {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });
       } else {
@@ -28,11 +37,55 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
         });
       }
     }
+    
+    // Token验证接口
+    if (path === '/admin/verify-token' && request.method === 'POST') {
+      const data = await request.json();
+      
+      if (!data.token) {
+        return new Response(JSON.stringify({ error: '缺少token' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+      
+      const verification = authManager.verifyAuthToken(data.token, env.ADMIN_PASSWORD);
+      
+      if (verification.valid) {
+        return new Response(JSON.stringify({ 
+          valid: true,
+          timestamp: verification.timestamp
+        }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      } else {
+        return new Response(JSON.stringify({ 
+          valid: false, 
+          reason: verification.reason 
+        }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+    }
 
     if (path === '/admin/files' && request.method === 'GET') {
+      // 支持token认证和密码认证
       const adminPassword = url.searchParams.get('password');
+      const authToken = request.headers.get('X-Auth-Token');
       
-      if (adminPassword !== env.ADMIN_PASSWORD) {
+      let authenticated = false;
+      
+      if (authToken) {
+        // Token认证
+        const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+        authenticated = verification.valid;
+      } else if (adminPassword) {
+        // 密码认证（兼容旧方式）
+        authenticated = adminPassword === env.ADMIN_PASSWORD;
+      }
+      
+      if (!authenticated) {
         return new Response(JSON.stringify({ error: '未授权访问' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -65,8 +118,20 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
     if (path.startsWith('/admin/delete/') && request.method === 'DELETE') {
       const fileId = path.substring('/admin/delete/'.length);
       const data = await request.json();
+      const authToken = request.headers.get('X-Auth-Token');
       
-      if (data.password !== env.ADMIN_PASSWORD) {
+      let authenticated = false;
+      
+      if (authToken) {
+        // Token认证
+        const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+        authenticated = verification.valid;
+      } else if (data.password) {
+        // 密码认证（兼容旧方式）
+        authenticated = data.password === env.ADMIN_PASSWORD;
+      }
+      
+      if (!authenticated) {
         return new Response(JSON.stringify({ error: '管理员密码错误' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
