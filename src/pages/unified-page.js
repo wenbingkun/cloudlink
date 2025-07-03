@@ -637,6 +637,53 @@ export function getUnifiedPageHTML() {
             
             .upload-area {
                 padding: 40px 20px;
+                min-height: 140px;
+                border-width: 2px;
+            }
+            
+            .upload-area:hover,
+            .upload-area:active {
+                transform: none;
+                border-color: #667eea;
+                background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+            }
+            
+            .upload-icon {
+                font-size: 36px;
+            }
+            
+            .upload-text {
+                font-size: 16px;
+            }
+            
+            .upload-hint {
+                font-size: 13px;
+            }
+            
+            /* 移动端触摸优化 */
+            .upload-area {
+                -webkit-tap-highlight-color: rgba(102, 126, 234, 0.2);
+                user-select: none;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+            }
+        }
+        
+        /* Android特定优化 */
+        @media screen and (max-width: 768px) {
+            .upload-area {
+                border-radius: 15px;
+                transition: all 0.2s ease;
+            }
+            
+            .modal-content {
+                width: 95%;
+                padding: 30px 20px;
+            }
+            
+            .btn {
+                min-height: 44px; /* iOS/Android推荐的最小触摸目标 */
             }
         }
     </style>
@@ -678,7 +725,7 @@ export function getUnifiedPageHTML() {
                     <div class="upload-icon">📁</div>
                     <div class="upload-text">拖拽文件到这里，或点击选择文件</div>
                     <div class="upload-hint">支持多文件上传，最大 2GB</div>
-                    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z,.mp3,.mp4,.avi,.mov,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ppt,.pptx,.xls,.xlsx,.csv,.rtf,.md,.json,.xml,.html,.css,.js,.lrc,.srt,.ass,.ssa,.vtt,.sub,.tar,.gz,.wav,.flac,.aac,.ogg,.mkv,.flv,.wmv">
+                    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,audio/*,application/*,text/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z,.mp3,.mp4,.avi,.mov,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ppt,.pptx,.xls,.xlsx,.csv,.rtf,.md,.json,.xml,.html,.css,.js,.lrc,.srt,.ass,.ssa,.vtt,.sub,.tar,.gz,.wav,.flac,.aac,.ogg,.mkv,.flv,.wmv">
                 </div>
                 
                 <div class="file-queue" id="fileQueue"></div>
@@ -860,43 +907,64 @@ export function getUnifiedPageHTML() {
             // 上传相关
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('fileInput');
+            const deviceInfo = getDeviceInfo();
             
-            // 为iOS优化的点击事件处理
+            // 跨平台点击事件处理
             uploadArea.addEventListener('click', function(e) {
                 console.log('Upload area clicked');
                 e.preventDefault();
                 e.stopPropagation();
                 
-                // 重置文件输入，确保可以重新选择相同文件
-                fileInput.value = '';
-                
-                // 触发文件选择
-                fileInput.click();
+                triggerFileSelection();
             });
             
-            // 添加触摸事件支持（iOS友好）
-            uploadArea.addEventListener('touchend', function(e) {
-                console.log('Upload area touched');
-                e.preventDefault();
-                e.stopPropagation();
+            // 移动端触摸事件支持
+            if (deviceInfo.touchSupport) {
+                uploadArea.addEventListener('touchend', function(e) {
+                    console.log('Upload area touched (touchend)');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    triggerFileSelection();
+                });
                 
-                fileInput.value = '';
-                fileInput.click();
-            });
+                // Android 特殊处理：某些Android浏览器需要touchstart
+                if (deviceInfo.isAndroid) {
+                    uploadArea.addEventListener('touchstart', function(e) {
+                        console.log('Upload area touched (touchstart - Android)');
+                        // 不阻止默认行为，让touchend处理
+                    });
+                }
+            }
             
-            // 拖拽相关（主要针对桌面端）
-            uploadArea.addEventListener('dragover', handleDragOver);
-            uploadArea.addEventListener('dragleave', handleDragLeave);
-            uploadArea.addEventListener('drop', handleDrop);
+            // 桌面端拖拽支持
+            if (deviceInfo.isDesktop) {
+                uploadArea.addEventListener('dragover', handleDragOver);
+                uploadArea.addEventListener('dragleave', handleDragLeave);
+                uploadArea.addEventListener('drop', handleDrop);
+            }
             
-            // 文件选择事件
+            // 文件选择事件（通用）
             fileInput.addEventListener('change', handleFileSelect);
             
-            // iOS 特殊处理：确保文件输入可以被正确触发
+            // 确保文件输入可以被正确触发
             fileInput.addEventListener('click', function(e) {
                 console.log('File input clicked');
                 e.stopPropagation();
             });
+            
+            // 统一的文件选择触发函数
+            function triggerFileSelection() {
+                console.log('Triggering file selection for:', deviceInfo.browser);
+                
+                // 重置文件输入，确保可以重新选择相同文件
+                fileInput.value = '';
+                
+                // 小延迟确保重置生效（特别是Android）
+                setTimeout(() => {
+                    fileInput.click();
+                }, 10);
+            }
             
             document.getElementById('uploadBtn').addEventListener('click', startUpload);
             document.getElementById('clearBtn').addEventListener('click', clearQueue);
@@ -933,21 +1001,100 @@ export function getUnifiedPageHTML() {
                 showToast('已自动登录', 'success');
             }
             
-            // iOS 设备检测和提示
-            if (isIOSDevice()) {
-                console.log('iOS device detected, applying iOS-specific optimizations');
-                // 在上传区域添加额外的提示
-                const uploadHint = document.querySelector('.upload-hint');
+            // 设备特定优化
+            const deviceInfo = getDeviceInfo();
+            console.log('Device info:', deviceInfo);
+            
+            applyDeviceSpecificOptimizations(deviceInfo);
+        }
+        
+        // 应用设备特定优化
+        function applyDeviceSpecificOptimizations(deviceInfo) {
+            const uploadHint = document.querySelector('.upload-hint');
+            const uploadText = document.querySelector('.upload-text');
+            
+            if (deviceInfo.isMobile) {
+                // 移动端优化
+                if (uploadText) {
+                    uploadText.textContent = '点击选择文件进行上传';
+                }
+                
+                if (deviceInfo.isIOS) {
+                    console.log('iOS device detected, applying iOS-specific optimizations');
+                    if (uploadHint) {
+                        uploadHint.textContent = '支持照片、视频等文件，最大 2GB';
+                    }
+                } else if (deviceInfo.isAndroid) {
+                    console.log('Android device detected, applying Android-specific optimizations');
+                    if (uploadHint) {
+                        uploadHint.textContent = '支持图片、视频、文档等，最大 2GB';
+                    }
+                } else {
+                    // 其他移动设备
+                    if (uploadHint) {
+                        uploadHint.textContent = '点击选择文件，最大 2GB';
+                    }
+                }
+                
+                // 移动端特殊样式调整
+                adjustMobileStyles();
+            } else {
+                // 桌面端保持原有提示
+                console.log('Desktop device detected');
                 if (uploadHint) {
-                    uploadHint.textContent = '点击选择照片、视频或其他文件，最大 2GB';
+                    uploadHint.textContent = '支持多文件上传，最大 2GB';
+                }
+                if (uploadText) {
+                    uploadText.textContent = '拖拽文件到这里，或点击选择文件';
                 }
             }
         }
         
-        // iOS 设备检测
+        // 移动端样式调整
+        function adjustMobileStyles() {
+            const uploadArea = document.getElementById('uploadArea');
+            if (uploadArea) {
+                // 增加移动端点击区域
+                uploadArea.style.minHeight = '150px';
+                uploadArea.style.cursor = 'pointer';
+                
+                // 添加移动端友好的视觉反馈
+                uploadArea.style.webkitTapHighlightColor = 'rgba(102, 126, 234, 0.2)';
+            }
+        }
+        
+        // 设备检测函数
+        function getDeviceInfo() {
+            const userAgent = navigator.userAgent;
+            
+            return {
+                isIOS: /iPad|iPhone|iPod/.test(userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                isAndroid: /Android/.test(userAgent),
+                isMobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(userAgent) ||
+                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                isDesktop: !/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(userAgent) &&
+                          !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                browser: getBrowserInfo(userAgent),
+                touchSupport: 'ontouchstart' in window || navigator.maxTouchPoints > 0
+            };
+        }
+        
+        function getBrowserInfo(userAgent) {
+            if (/Chrome/.test(userAgent) && /Android/.test(userAgent)) return 'Android Chrome';
+            if (/Samsung/.test(userAgent)) return 'Samsung Browser';
+            if (/Firefox/.test(userAgent) && /Android/.test(userAgent)) return 'Android Firefox';
+            if (/Safari/.test(userAgent) && /iPhone|iPad/.test(userAgent)) return 'iOS Safari';
+            if (/Chrome/.test(userAgent)) return 'Desktop Chrome';
+            if (/Firefox/.test(userAgent)) return 'Desktop Firefox';
+            if (/Safari/.test(userAgent)) return 'Desktop Safari';
+            if (/Edge/.test(userAgent)) return 'Edge';
+            return 'Unknown';
+        }
+        
+        // 兼容性检查
         function isIOSDevice() {
-            return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            return getDeviceInfo().isIOS;
         }
         
         // 切换标签页
