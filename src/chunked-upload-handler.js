@@ -1,10 +1,13 @@
 import { generateId } from './utils.js';
+import { ServerAuthManager } from './auth-manager.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Range',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Range, X-Auth-Token',
 };
+
+const authManager = new ServerAuthManager();
 
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 const uploadSessions = new Map(); // 在生产环境中应使用持久化存储
@@ -36,10 +39,22 @@ async function handleUploadStart(request, env, driveAPI, url) {
   try {
     const data = await request.json();
     const { fileName, fileSize, password } = data;
+    const authToken = request.headers.get('X-Auth-Token');
 
-    // 验证密码
-    if (password !== env.UPLOAD_PASSWORD) {
-      return new Response(JSON.stringify({ error: '密码错误' }), {
+    // 认证检查：支持管理员token或上传密码
+    let authenticated = false;
+    
+    if (authToken) {
+      // Token认证（管理员模式）
+      const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+      authenticated = verification.valid;
+    } else if (password) {
+      // 密码认证（游客模式）
+      authenticated = password === env.UPLOAD_PASSWORD;
+    }
+
+    if (!authenticated) {
+      return new Response(JSON.stringify({ error: '认证失败' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });

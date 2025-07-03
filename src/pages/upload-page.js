@@ -608,6 +608,30 @@ export function getUploadPageHTML() {
                 padding: 25px 20px;
                 border-radius: 18px;
             }
+        }
+        
+        /* Toast动画 */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
             
             h1 {
                 font-size: 26px;
@@ -683,6 +707,42 @@ export function getUploadPageHTML() {
     </a>
 
     <script>
+        // 认证管理器（内联版本）
+        class AuthManager {
+            constructor() {
+                this.tokenKey = 'cloudlink_auth_token';
+                this.tokenExpiry = 'cloudlink_token_expiry';
+                this.sessionDuration = 24 * 60 * 60 * 1000; // 24小时
+            }
+
+            checkLocalAuth() {
+                const token = localStorage.getItem(this.tokenKey);
+                const expiry = localStorage.getItem(this.tokenExpiry);
+                
+                if (!token || !expiry) {
+                    return null;
+                }
+                
+                if (Date.now() > parseInt(expiry)) {
+                    this.clearAuth();
+                    return null;
+                }
+                
+                return token;
+            }
+
+            clearAuth() {
+                localStorage.removeItem(this.tokenKey);
+                localStorage.removeItem(this.tokenExpiry);
+            }
+
+            isAuthenticated() {
+                const expiry = localStorage.getItem(this.tokenExpiry);
+                return expiry && Date.now() < parseInt(expiry);
+            }
+        }
+
+        const authManager = new AuthManager();
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const passwordInput = document.getElementById('passwordInput');
@@ -696,6 +756,61 @@ export function getUploadPageHTML() {
         
         let selectedFiles = [];
         let uploadId = 0;
+        let isAdminMode = false;
+
+        // 页面加载时检查认证状态
+        window.addEventListener('load', () => {
+            checkAuthStatus();
+        });
+
+        function checkAuthStatus() {
+            if (authManager.isAuthenticated()) {
+                isAdminMode = true;
+                passwordInput.style.display = 'none';
+                passwordInput.value = 'admin_authenticated'; // 设置一个标识值
+                
+                // 显示管理员状态提示
+                const statusIndicator = document.createElement('div');
+                statusIndicator.id = 'authStatus';
+                statusIndicator.style.cssText = \`
+                    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    text-align: center;
+                    font-weight: 600;
+                    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                \`;
+                statusIndicator.innerHTML = \`
+                    <span>👨‍💼 管理员模式 - 免密上传</span>
+                    <button onclick="switchToGuestMode()" style="background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px;">切换到游客模式</button>
+                \`;
+                
+                passwordInput.parentNode.insertBefore(statusIndicator, passwordInput);
+            } else {
+                isAdminMode = false;
+                passwordInput.style.display = 'block';
+                passwordInput.placeholder = '请输入上传密码';
+            }
+        }
+
+        function switchToGuestMode() {
+            isAdminMode = false;
+            passwordInput.style.display = 'block';
+            passwordInput.value = '';
+            passwordInput.placeholder = '请输入上传密码';
+            
+            const statusIndicator = document.getElementById('authStatus');
+            if (statusIndicator) {
+                statusIndicator.remove();
+            }
+            
+            showToast('🔄 已切换到游客模式');
+        }
 
         uploadArea.addEventListener('click', () => {
             fileInput.click();
@@ -919,13 +1034,36 @@ export function getUploadPageHTML() {
             await Promise.all(uploadPromises);
             
             // 显示上传结果汇总
-            const successCount = selectedFiles.filter(f => f.status === 'success').length;
+            const successFiles = selectedFiles.filter(f => f.status === 'success');
             const errorCount = selectedFiles.filter(f => f.status === 'error').length;
             
             if (errorCount === 0) {
-                showResult(\`所有文件上传成功！共 \${successCount} 个文件\`, 'success');
+                // 所有文件上传成功，显示汇总链接
+                const linksHtml = successFiles.map(f => 
+                    \`<div style="margin: 5px 0; padding: 8px; background: rgba(76, 175, 80, 0.1); border-radius: 6px;">
+                        <div style="font-weight: 600; color: #4caf50; margin-bottom: 3px;">\${f.file.name}</div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="text" value="\${f.downloadUrl}" readonly style="flex: 1; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                            <button onclick="copyFileLink('\${f.downloadUrl}', '\${f.file.name}')" style="background: #4caf50; color: white; border: none; border-radius: 4px; padding: 3px 6px; font-size: 10px; cursor: pointer;">复制</button>
+                        </div>
+                    </div>\`
+                ).join('');
+                
+                showResult(\`
+                    <div style="text-align: left;">
+                        <div style="text-align: center; margin-bottom: 15px;">
+                            <strong style="color: #4caf50;">🎉 所有文件上传成功！共 \${successFiles.length} 个文件</strong>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <button onclick="copyAllLinks()" style="background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: 600;">📋 复制所有链接</button>
+                        </div>
+                        <div style="max-height: 200px; overflow-y: auto;">
+                            \${linksHtml}
+                        </div>
+                    </div>
+                \`, 'success');
             } else {
-                showResult(\`上传完成：\${successCount} 个成功，\${errorCount} 个失败\`, errorCount > successCount ? 'error' : 'success');
+                showResult(\`上传完成：\${successFiles.length} 个成功，\${errorCount} 个失败\`, errorCount > successFiles.length ? 'error' : 'success');
             }
         }
         
@@ -955,7 +1093,17 @@ export function getUploadPageHTML() {
                     progressFill.style.width = progress + '%';
                     break;
                 case 'success':
-                    statusElement.textContent = '上传成功';
+                    statusElement.innerHTML = \`
+                        <div style="color: #4caf50; font-weight: 600; margin-bottom: 8px;">✅ 上传成功</div>
+                        <div style="background: rgba(102, 126, 234, 0.1); padding: 8px; border-radius: 8px; margin-top: 5px;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">下载链接：</div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="text" value="\${fileObj.downloadUrl}" readonly style="flex: 1; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; background: white;">
+                                <button onclick="copyFileLink('\${fileObj.downloadUrl}', '\${fileObj.file.name}')" style="background: #4caf50; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 10px; cursor: pointer; white-space: nowrap;">复制</button>
+                                <a href="\${fileObj.downloadUrl}" target="_blank" style="background: #2196f3; color: white; text-decoration: none; border-radius: 4px; padding: 4px 8px; font-size: 10px; white-space: nowrap;">打开</a>
+                            </div>
+                        </div>
+                    \`;
                     progressElement.style.display = 'none';
                     break;
                 case 'error':
@@ -972,10 +1120,25 @@ export function getUploadPageHTML() {
         async function uploadFileNormal(fileObj, password) {
             const formData = new FormData();
             formData.append('file', fileObj.file);
-            formData.append('password', password);
+            
+            const headers = {};
+            
+            if (isAdminMode) {
+                // 管理员模式，使用token认证
+                const token = authManager.checkLocalAuth();
+                if (token) {
+                    headers['X-Auth-Token'] = token;
+                } else {
+                    throw new Error('管理员认证已过期，请重新登录');
+                }
+            } else {
+                // 游客模式，使用密码认证
+                formData.append('password', password);
+            }
 
             const response = await fetch('/upload', {
                 method: 'POST',
+                headers: headers,
                 body: formData
             });
 
@@ -993,17 +1156,33 @@ export function getUploadPageHTML() {
 
         // 分块上传
         async function uploadFileChunked(fileObj, password) {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const requestBody = {
+                fileName: fileObj.file.name,
+                fileSize: fileObj.file.size
+            };
+            
+            if (isAdminMode) {
+                // 管理员模式，使用token认证
+                const token = authManager.checkLocalAuth();
+                if (token) {
+                    headers['X-Auth-Token'] = token;
+                } else {
+                    throw new Error('管理员认证已过期，请重新登录');
+                }
+            } else {
+                // 游客模式，使用密码认证
+                requestBody.password = password;
+            }
+            
             // 开始分块上传会话
             const startResponse = await fetch('/chunked-upload/start', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fileName: fileObj.file.name,
-                    fileSize: fileObj.file.size,
-                    password: password
-                })
+                headers: headers,
+                body: JSON.stringify(requestBody)
             });
 
             const startData = await startResponse.json();
@@ -1071,6 +1250,70 @@ export function getUploadPageHTML() {
                     alert('链接已复制到剪贴板！');
                 });
             }
+        }
+        
+        function copyFileLink(url, fileName) {
+            navigator.clipboard.writeText(url).then(() => {
+                showToast(\`📋 已复制 "\${fileName}" 的下载链接\`);
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = url;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast(\`📋 已复制 "\${fileName}" 的下载链接\`);
+            });
+        }
+        
+        function copyAllLinks() {
+            const successFiles = selectedFiles.filter(f => f.status === 'success');
+            const links = successFiles.map(f => \`\${f.file.name}: \${f.downloadUrl}\`).join('\\n');
+            
+            navigator.clipboard.writeText(links).then(() => {
+                showToast(\`📋 已复制 \${successFiles.length} 个文件的下载链接\`);
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = links;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast(\`📋 已复制 \${successFiles.length} 个文件的下载链接\`);
+            });
+        }
+        
+        function showToast(message) {
+            // 创建toast提示
+            const toast = document.createElement('div');
+            toast.style.cssText = \`
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(76, 175, 80, 0.9);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-weight: 600;
+                backdrop-filter: blur(10px);
+                animation: slideInRight 0.3s ease-out;
+            \`;
+            toast.textContent = message;
+            
+            // 添加到页面
+            document.body.appendChild(toast);
+            
+            // 3秒后自动移除
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        document.body.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
         }
 
         passwordInput.addEventListener('keypress', (e) => {

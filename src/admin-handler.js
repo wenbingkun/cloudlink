@@ -11,11 +11,7 @@ const authManager = new ServerAuthManager();
 
 export async function handleAdmin(request, env, driveAPI, path, url) {
   try {
-    if (path === '/admin' && request.method === 'GET') {
-      return new Response(getAdminPageHTML(), {
-        headers: { 'Content-Type': 'text/html', ...corsHeaders },
-      });
-    }
+    // 移除独立的admin页面路由，现在使用统一界面
 
     if (path === '/admin/login' && request.method === 'POST') {
       const data = await request.json();
@@ -117,7 +113,6 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
 
     if (path.startsWith('/admin/delete/') && request.method === 'DELETE') {
       const fileId = path.substring('/admin/delete/'.length);
-      const data = await request.json();
       const authToken = request.headers.get('X-Auth-Token');
       
       let authenticated = false;
@@ -126,9 +121,6 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
         // Token认证
         const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
         authenticated = verification.valid;
-      } else if (data.password) {
-        // 密码认证（兼容旧方式）
-        authenticated = data.password === env.ADMIN_PASSWORD;
       }
       
       if (!authenticated) {

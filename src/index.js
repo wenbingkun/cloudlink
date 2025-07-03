@@ -3,7 +3,7 @@ import { handleUpload } from './upload-handler.js';
 import { handleDownload } from './download-handler.js';
 import { handleAdmin } from './admin-handler.js';
 import { handleChunkedUpload } from './chunked-upload-handler.js';
-import { getUploadPageHTML } from './pages/upload-page.js';
+import { getUnifiedPageHTML } from './pages/unified-page.js';
 import { RateLimiter } from './rate-limiter.js';
 
 const corsHeaders = {
@@ -64,7 +64,7 @@ export default {
       );
 
       if (path === '/' && request.method === 'GET') {
-        return new Response(getUploadPageHTML(), {
+        return new Response(getUnifiedPageHTML(), {
           headers: { 'Content-Type': 'text/html', ...corsHeaders },
         });
       }

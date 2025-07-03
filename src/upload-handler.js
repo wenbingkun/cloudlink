@@ -1,10 +1,13 @@
 import { generateId } from './utils.js';
+import { ServerAuthManager } from './auth-manager.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
 };
+
+const authManager = new ServerAuthManager();
 
 // 从环境变量获取配置，如果不存在则使用默认值
 const getMaxFileSize = (env) => parseInt(env.MAX_FILE_SIZE || '104857600'); // 默认100MB
@@ -17,9 +20,29 @@ export async function handleUpload(request, env, driveAPI, url) {
     const formData = await request.formData();
     const password = formData.get('password');
     const file = formData.get('file');
+    const authToken = request.headers.get('X-Auth-Token');
 
-    if (password !== env.UPLOAD_PASSWORD) {
-      return new Response(JSON.stringify({ error: '密码错误' }), { 
+    // 认证检查：支持管理员token或上传密码
+    let authenticated = false;
+    
+    if (authToken) {
+      // Token认证（管理员模式）
+      const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+      authenticated = verification.valid;
+    } else if (password) {
+      // 密码认证（游客模式）
+      if (password === 'admin_authenticated') {
+        // 前端标识的管理员模式，需要进一步验证
+        return new Response(JSON.stringify({ error: '认证失败，请刷新页面重试' }), { 
+          status: 401, 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+      authenticated = password === env.UPLOAD_PASSWORD;
+    }
+
+    if (!authenticated) {
+      return new Response(JSON.stringify({ error: '认证失败' }), { 
         status: 401, 
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
