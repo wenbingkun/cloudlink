@@ -87,15 +87,12 @@ async function handleUploadStart(request, env, driveAPI, url) {
       });
     }
 
-    // 生成唯一文件名
-    const timestamp = Date.now();
-    const randomId = generateId();
-    const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const uniqueFileName = `${timestamp}_${randomId}_${safeFileName}`;
+    // 保留原始文件名，只进行安全化处理
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/g, '_');
 
     // 启动 Google Drive resumable upload
     const uploadUrl = await driveAPI.startResumableUpload(
-      uniqueFileName, 
+      safeFileName, 
       fileSize, 
       env.DRIVE_FOLDER_ID
     );
@@ -105,7 +102,7 @@ async function handleUploadStart(request, env, driveAPI, url) {
     const session = {
       sessionId,
       fileName,
-      uniqueFileName,
+      safeFileName,
       fileSize,
       uploadUrl,
       bytesUploaded: 0,
