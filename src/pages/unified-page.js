@@ -749,6 +749,18 @@ export function getUnifiedPageHTML() {
         </div>
     </div>
 
+    <!-- 确认对话框 -->
+    <div id="confirmModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-title">确认操作</div>
+            <div class="modal-description" id="confirmMessage">确定要执行此操作吗？</div>
+            <div class="modal-actions">
+                <button id="confirmCancelBtn" class="modal-btn modal-btn-secondary">取消</button>
+                <button id="confirmOkBtn" class="modal-btn modal-btn-primary">确认</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 全局变量
         let authManager = null;
@@ -877,6 +889,10 @@ export function getUnifiedPageHTML() {
                     confirmPassword();
                 }
             });
+            
+            // 确认对话框相关
+            document.getElementById('confirmCancelBtn').addEventListener('click', hideConfirmModal);
+            document.getElementById('confirmOkBtn').addEventListener('click', confirmAction);
         }
         
         // 检查认证状态
@@ -1165,6 +1181,43 @@ export function getUnifiedPageHTML() {
             }
         }
         
+        // 确认对话框相关函数
+        function showConfirmModal(message) {
+            return new Promise((resolve, reject) => {
+                const modal = document.getElementById('confirmModal');
+                const messageElement = document.getElementById('confirmMessage');
+                
+                messageElement.textContent = message;
+                modal.style.display = 'flex';
+                
+                // 保存回调函数到全局，供按钮事件使用
+                window.confirmModalResolve = resolve;
+                window.confirmModalReject = reject;
+            });
+        }
+        
+        function hideConfirmModal() {
+            const modal = document.getElementById('confirmModal');
+            modal.style.display = 'none';
+            
+            if (window.confirmModalReject) {
+                window.confirmModalReject(false);
+                window.confirmModalResolve = null;
+                window.confirmModalReject = null;
+            }
+        }
+        
+        function confirmAction() {
+            const modal = document.getElementById('confirmModal');
+            modal.style.display = 'none';
+            
+            if (window.confirmModalResolve) {
+                window.confirmModalResolve(true);
+                window.confirmModalResolve = null;
+                window.confirmModalReject = null;
+            }
+        }
+        
         async function startUpload() {
             const pendingFiles = fileQueue.filter(f => f.status === 'pending');
             if (pendingFiles.length === 0) return;
@@ -1402,7 +1455,8 @@ export function getUnifiedPageHTML() {
         }
         
         async function deleteFile(fileId) {
-            if (!confirm('确定要删除这个文件吗？')) return;
+            const confirmed = await showConfirmModal('确定要删除这个文件吗？');
+            if (!confirmed) return;
             
             try {
                 const token = authManager.getCurrentToken();
@@ -1427,7 +1481,8 @@ export function getUnifiedPageHTML() {
         async function deleteSelected() {
             if (selectedFiles.size === 0) return;
             
-            if (!confirm(\`确定要删除选中的 \${selectedFiles.size} 个文件吗？\`)) return;
+            const confirmed = await showConfirmModal(\`确定要删除选中的 \${selectedFiles.size} 个文件吗？\`);
+            if (!confirmed) return;
             
             const promises = Array.from(selectedFiles).map(fileId => {
                 const token = authManager.getCurrentToken();
