@@ -19,7 +19,8 @@ export class GoogleDriveAPI {
     const now = Math.floor(Date.now() / 1000);
     const jwtPayload = {
       iss: this.serviceAccountEmail,
-      scope: 'https://www.googleapis.com/auth/drive.file',
+      sub: this.serviceAccountEmail,
+      scope: 'https://www.googleapis.com/auth/drive',
       aud: 'https://oauth2.googleapis.com/token',
       exp: now + 3600,
       iat: now,
@@ -39,10 +40,17 @@ export class GoogleDriveAPI {
     });
 
     if (!response.ok) {
-      throw new Error(`Token request failed: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('Token request failed:', response.status, errorText);
+      throw new Error(`Token request failed: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
+    if (!data.access_token) {
+      console.error('No access token in response:', data);
+      throw new Error('No access token received');
+    }
+    
     this.accessToken = data.access_token;
     this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
     
@@ -55,39 +63,76 @@ export class GoogleDriveAPI {
     
     const data = `${encodedHeader}.${encodedPayload}`;
     
-    const privateKeyPem = this.privateKey.replace(/\\n/g, '\n');
-    const key = await crypto.subtle.importKey(
-      'pkcs8',
-      this.pemToArrayBuffer(privateKeyPem),
-      {
-        name: 'RSASSA-PKCS1-v1_5',
-        hash: 'SHA-256',
-      },
-      false,
-      ['sign']
-    );
+    try {
+      // 处理私钥格式 - 支持 JSON 转义和普通格式
+      let privateKeyPem = this.privateKey;
+      
+      // 如果包含转义的换行符，先处理
+      if (privateKeyPem.includes('\\n')) {
+        privateKeyPem = privateKeyPem.replace(/\\n/g, '\n');
+      }
+      
+      // 确保私钥格式正确
+      privateKeyPem = privateKeyPem.trim();
+      
+      // 验证私钥格式
+      if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----') || 
+          !privateKeyPem.includes('-----END PRIVATE KEY-----')) {
+        console.error('Private key validation failed. Key preview:', privateKeyPem.substring(0, 100));
+        throw new Error('Invalid private key format');
+      }
+      
+      const key = await crypto.subtle.importKey(
+        'pkcs8',
+        this.pemToArrayBuffer(privateKeyPem),
+        {
+          name: 'RSASSA-PKCS1-v1_5',
+          hash: 'SHA-256',
+        },
+        false,
+        ['sign']
+      );
 
-    const signature = await crypto.subtle.sign(
-      'RSASSA-PKCS1-v1_5',
-      key,
-      new TextEncoder().encode(data)
-    );
+      const signature = await crypto.subtle.sign(
+        'RSASSA-PKCS1-v1_5',
+        key,
+        new TextEncoder().encode(data)
+      );
 
-    const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
-      .replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m]));
+      const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
+        .replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m]));
 
-    return `${data}.${encodedSignature}`;
+      return `${data}.${encodedSignature}`;
+    } catch (error) {
+      console.error('JWT creation error:', error);
+      throw new Error(`JWT creation failed: ${error.message}`);
+    }
   }
 
   pemToArrayBuffer(pem) {
-    const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
-    const binary = atob(b64);
-    const buffer = new ArrayBuffer(binary.length);
-    const view = new Uint8Array(buffer);
-    for (let i = 0; i < binary.length; i++) {
-      view[i] = binary.charCodeAt(i);
+    // 提取PEM格式中的base64内容
+    let b64 = pem
+      .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+      .replace(/-----END PRIVATE KEY-----/g, '')
+      .replace(/\s/g, ''); // 移除所有空白字符
+    
+    // 确保base64字符串的长度是4的倍数
+    while (b64.length % 4) {
+      b64 += '=';
     }
-    return buffer;
+    
+    try {
+      const binary = atob(b64);
+      const buffer = new ArrayBuffer(binary.length);
+      const view = new Uint8Array(buffer);
+      for (let i = 0; i < binary.length; i++) {
+        view[i] = binary.charCodeAt(i);
+      }
+      return buffer;
+    } catch (error) {
+      console.error('Base64 decode error:', error, 'Input:', b64.substring(0, 50) + '...');
+      throw new Error('Invalid private key format');
+    }
   }
 
   async uploadFile(fileName, fileContent, folderId) {
@@ -117,12 +162,100 @@ export class GoogleDriveAPI {
     return response.json();
   }
 
+  // 启动 resumable upload 会话
+  async startResumableUpload(fileName, fileSize, folderId) {
+    const accessToken = await this.getAccessToken();
+    
+    const metadata = {
+      name: fileName,
+      parents: [folderId],
+    };
+
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Upload-Content-Length': fileSize.toString(),
+      },
+      body: JSON.stringify(metadata),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to start resumable upload: ${response.statusText} - ${errorText}`);
+    }
+
+    return response.headers.get('Location');
+  }
+
+  // 上传文件块
+  async uploadChunk(uploadUrl, chunk, start, totalSize) {
+    const end = start + chunk.byteLength - 1;
+    
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Content-Length': chunk.byteLength.toString(),
+      },
+      body: chunk,
+    });
+
+    if (response.status === 200 || response.status === 201) {
+      // 上传完成
+      return { completed: true, result: await response.json() };
+    } else if (response.status === 308) {
+      // 需要继续上传
+      const range = response.headers.get('Range');
+      const nextStart = range ? parseInt(range.split('-')[1]) + 1 : start + chunk.byteLength;
+      return { completed: false, nextStart };
+    } else {
+      const errorText = await response.text();
+      throw new Error(`Chunk upload failed: ${response.statusText} - ${errorText}`);
+    }
+  }
+
+  // 检查上传状态
+  async checkUploadStatus(uploadUrl, totalSize) {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Range': `bytes */${totalSize}`,
+      },
+    });
+
+    if (response.status === 200 || response.status === 201) {
+      return { completed: true, result: await response.json() };
+    } else if (response.status === 308) {
+      const range = response.headers.get('Range');
+      const bytesUploaded = range ? parseInt(range.split('-')[1]) + 1 : 0;
+      return { completed: false, bytesUploaded };
+    } else {
+      const errorText = await response.text();
+      throw new Error(`Status check failed: ${response.statusText} - ${errorText}`);
+    }
+  }
+
   async downloadFile(fileId) {
     const accessToken = await this.getAccessToken();
     
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    return response;
+  }
+
+  async downloadFileRange(fileId, start, end) {
+    const accessToken = await this.getAccessToken();
+    
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Range': `bytes=${start}-${end}`,
       },
     });
 

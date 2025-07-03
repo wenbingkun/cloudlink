@@ -3,9 +3,11 @@ main = "src/index.js"
 compatibility_date = "2024-01-15"
 
 [vars]
-UPLOAD_PASSWORD = "your-team-password-here"
-ADMIN_PASSWORD = "your-admin-password-here"
-DRIVE_FOLDER_ID = "your-google-drive-folder-id"
+UPLOAD_PASSWORD = "CloudLink_Upload_2024!@#"
+ADMIN_PASSWORD = "CloudLink_Admin_2024!@#"
+DRIVE_FOLDER_ID = "1dmeMd7YPVIWOL_9Mjd5Mtw-rxOcclp1r"
+MAX_FILE_SIZE = "2147483648"  # 2GB in bytes
+ALLOWED_EXTENSIONS = "jpg,jpeg,png,gif,pdf,doc,docx,txt,zip,mp4,mp3"
 
 # 敏感信息通过 wrangler secret 命令设置
 # wrangler secret put GOOGLE_SERVICE_ACCOUNT_EMAIL
