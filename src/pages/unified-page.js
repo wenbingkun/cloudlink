@@ -1548,6 +1548,8 @@ export function getUnifiedPageHTML() {
                 'mp3': '🎵', 'wav': '🎵', 'flac': '🎵',
                 // 文档
                 'pdf': '📄', 'doc': '📄', 'docx': '📄', 'txt': '📄',
+                // 字幕/歌词
+                'lrc': '🎤', 'srt': '📝', 'ass': '📝', 'ssa': '📝', 'vtt': '📝', 'sub': '📝',
                 // 压缩包
                 'zip': '📦', 'rar': '📦', '7z': '📦',
                 // 其他
@@ -1564,7 +1566,7 @@ export function getUnifiedPageHTML() {
                 image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'],
                 video: ['mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'],
                 audio: ['mp3', 'wav', 'flac', 'aac', 'ogg'],
-                document: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'csv'],
+                document: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'csv', 'lrc', 'srt', 'ass', 'ssa', 'vtt', 'sub', 'md', 'json', 'xml', 'html', 'css', 'js'],
                 archive: ['zip', 'rar', '7z', 'tar', 'gz']
             };
             
