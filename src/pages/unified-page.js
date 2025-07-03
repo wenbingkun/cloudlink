@@ -678,7 +678,7 @@ export function getUnifiedPageHTML() {
                     <div class="upload-icon">📁</div>
                     <div class="upload-text">拖拽文件到这里，或点击选择文件</div>
                     <div class="upload-hint">支持多文件上传，最大 2GB</div>
-                    <input type="file" id="fileInput" style="display: none;" multiple>
+                    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z,.mp3,.mp4,.avi,.mov,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ppt,.pptx,.xls,.xlsx,.csv,.rtf,.md,.json,.xml,.html,.css,.js,.lrc,.srt,.ass,.ssa,.vtt,.sub,.tar,.gz,.wav,.flac,.aac,.ogg,.mkv,.flv,.wmv">
                 </div>
                 
                 <div class="file-queue" id="fileQueue"></div>
@@ -861,12 +861,42 @@ export function getUnifiedPageHTML() {
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('fileInput');
             
-            uploadArea.addEventListener('click', () => fileInput.click());
+            // 为iOS优化的点击事件处理
+            uploadArea.addEventListener('click', function(e) {
+                console.log('Upload area clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 重置文件输入，确保可以重新选择相同文件
+                fileInput.value = '';
+                
+                // 触发文件选择
+                fileInput.click();
+            });
+            
+            // 添加触摸事件支持（iOS友好）
+            uploadArea.addEventListener('touchend', function(e) {
+                console.log('Upload area touched');
+                e.preventDefault();
+                e.stopPropagation();
+                
+                fileInput.value = '';
+                fileInput.click();
+            });
+            
+            // 拖拽相关（主要针对桌面端）
             uploadArea.addEventListener('dragover', handleDragOver);
             uploadArea.addEventListener('dragleave', handleDragLeave);
             uploadArea.addEventListener('drop', handleDrop);
             
+            // 文件选择事件
             fileInput.addEventListener('change', handleFileSelect);
+            
+            // iOS 特殊处理：确保文件输入可以被正确触发
+            fileInput.addEventListener('click', function(e) {
+                console.log('File input clicked');
+                e.stopPropagation();
+            });
             
             document.getElementById('uploadBtn').addEventListener('click', startUpload);
             document.getElementById('clearBtn').addEventListener('click', clearQueue);
@@ -902,6 +932,22 @@ export function getUnifiedPageHTML() {
             if (isAuthenticated) {
                 showToast('已自动登录', 'success');
             }
+            
+            // iOS 设备检测和提示
+            if (isIOSDevice()) {
+                console.log('iOS device detected, applying iOS-specific optimizations');
+                // 在上传区域添加额外的提示
+                const uploadHint = document.querySelector('.upload-hint');
+                if (uploadHint) {
+                    uploadHint.textContent = '点击选择照片、视频或其他文件，最大 2GB';
+                }
+            }
+        }
+        
+        // iOS 设备检测
+        function isIOSDevice() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         }
         
         // 切换标签页
@@ -1006,12 +1052,31 @@ export function getUnifiedPageHTML() {
         }
         
         function handleFileSelect(e) {
+            console.log('File select triggered, files:', e.target.files);
             const files = Array.from(e.target.files);
+            console.log('Files array:', files);
+            
+            if (files.length === 0) {
+                showToast('📁 没有选择任何文件', 'error');
+                return;
+            }
+            
             addFilesToQueue(files);
         }
         
         function addFilesToQueue(files) {
+            console.log('Adding files to queue:', files);
+            
+            if (!files || files.length === 0) {
+                showToast('📁 没有文件可以添加到队列', 'error');
+                return;
+            }
+            
+            let addedCount = 0;
+            
             files.forEach(file => {
+                console.log('Processing file:', file.name, 'size:', file.size);
+                
                 const fileId = Date.now() + Math.random();
                 const fileObj = {
                     id: fileId,
@@ -1023,10 +1088,18 @@ export function getUnifiedPageHTML() {
                 };
                 
                 fileQueue.push(fileObj);
+                addedCount++;
             });
+            
+            console.log('Added', addedCount, 'files to queue. Total queue size:', fileQueue.length);
             
             renderFileQueue();
             updateUploadButton();
+            
+            // 显示成功提示
+            if (addedCount > 0) {
+                showToast(\`📁 已添加 \${addedCount} 个文件到上传队列\`, 'success');
+            }
         }
         
         function renderFileQueue() {
