@@ -1041,16 +1041,36 @@ export function getUnifiedPageHTML() {
                         console.log('iOS file selection result:', e.target.files.length, 'files');
                         
                         if (e.target.files && e.target.files.length > 0) {
+                            // 显示加载提示
+                            showToast('📱 正在处理文件，请稍等...', 'info');
+                            
                             console.log('Successfully selected files on iOS:');
-                            for (let i = 0; i < e.target.files.length; i++) {
-                                const file = e.target.files[i];
-                                console.log('File ' + (i + 1) + ': ' + file.name + ' (' + (file.type || 'unknown type') + ') - ' + file.size + ' bytes');
-                            }
-                            handleFileSelect(e);
-                            showToast('📱 已选择 ' + e.target.files.length + ' 个文件', 'success');
+                            
+                            // 异步处理文件以避免阻塞UI
+                            setTimeout(() => {
+                                for (let i = 0; i < e.target.files.length; i++) {
+                                    const file = e.target.files[i];
+                                    console.log('File ' + (i + 1) + ': ' + file.name + ' (' + (file.type || 'unknown type') + ') - ' + file.size + ' bytes');
+                                }
+                                
+                                try {
+                                    handleFileSelect(e);
+                                    
+                                    // 显示成功提示
+                                    const fileCount = e.target.files.length;
+                                    const totalSize = Array.from(e.target.files).reduce((sum, file) => sum + file.size, 0);
+                                    const sizeText = formatFileSize(totalSize);
+                                    
+                                    showToast('✅ 已选择 ' + fileCount + ' 个文件 (' + sizeText + ')', 'success');
+                                } catch (error) {
+                                    console.error('Error processing selected files:', error);
+                                    showToast('❌ 文件处理失败，请重试', 'error');
+                                }
+                            }, 100); // 短暂延迟让UI响应
+                            
                         } else {
                             console.log('No files selected on iOS');
-                            showToast('📱 未选择文件，可能取消了选择', 'info');
+                            showToast('📱 未选择文件', 'info');
                         }
                         
                         // 清理元素
@@ -1075,6 +1095,10 @@ export function getUnifiedPageHTML() {
                     setTimeout(() => {
                         try {
                             console.log('Triggering iOS file input click...');
+                            
+                            // 显示点击后的等待提示
+                            showToast('📱 正在打开相册，请稍等...', 'info');
+                            
                             newFileInput.click();
                         } catch (error) {
                             console.error('iOS file input click failed:', error);
@@ -1163,7 +1187,7 @@ export function getUnifiedPageHTML() {
                 if (deviceInfo.isIOS) {
                     console.log('iOS device detected, applying iOS-specific optimizations');
                     if (uploadHint) {
-                        uploadHint.textContent = '📱 支持照片、视频等文件，点击选择来访问相册，最大 2GB';
+                        uploadHint.textContent = '📱 支持照片、视频等文件，大视频选择需要稍等片刻，最大 2GB';
                     }
                     
                     // 添加iOS专用提示
@@ -1218,7 +1242,7 @@ export function getUnifiedPageHTML() {
                 iosHint.id = 'ios-hint';
                 iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
-                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 🚀 大文件(>5MB)自动启用高速并发分块上传</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• WiFi环境下可获得最佳上传速度</div>';
+                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• ⏳ 大视频文件加载需要时间，请耐心等待不要重复点击</div><div style="margin-bottom: 5px;">• 🚀 文件选择完成后会自动启用高速上传</div><div style="margin-bottom: 5px;">• 如果长时间无响应，请刷新页面重试</div><div>• WiFi环境下可获得最佳体验</div>';
                 
                 uploadSection.appendChild(iosHint);
             }
@@ -1840,13 +1864,15 @@ export function getUnifiedPageHTML() {
             let optimalChunkSize, maxConcurrency;
             
             if (deviceInfo.isMobile) {
-                // 移动端：较小块，较少并发
-                optimalChunkSize = 2 * 1024 * 1024; // 2MB
-                maxConcurrency = 2;
+                // 移动端：更保守的策略以提高稳定性
+                optimalChunkSize = 1 * 1024 * 1024; // 1MB，更小的分块
+                maxConcurrency = 1; // 单线程上传，更稳定
+                console.log('Mobile device: using conservative upload strategy');
             } else {
-                // 桌面端：较大块，更多并发
-                optimalChunkSize = 8 * 1024 * 1024; // 8MB
-                maxConcurrency = 4;
+                // 桌面端：高性能策略
+                optimalChunkSize = 4 * 1024 * 1024; // 4MB，平衡性能和稳定性
+                maxConcurrency = 3; // 3路并发，稍微保守
+                console.log('Desktop device: using high-performance upload strategy');
             }
             
             // 启动分块上传
@@ -1934,6 +1960,10 @@ export function getUnifiedPageHTML() {
                     
                     console.log('Uploading chunk ' + (chunk.index + 1) + '/' + totalChunks + ': bytes ' + chunk.start + '-' + (chunk.end - 1));
                     
+                    // 添加超时控制和更好的错误处理
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+                    
                     const chunkResponse = await fetch('/chunked-upload/chunk/' + sessionId, {
                         method: 'PUT',
                         headers: {
@@ -1942,8 +1972,11 @@ export function getUnifiedPageHTML() {
                             'Cache-Control': 'no-cache',
                             'Connection': 'keep-alive'
                         },
-                        body: chunk.data
+                        body: chunk.data,
+                        signal: controller.signal
                     });
+                    
+                    clearTimeout(timeoutId);
                     
                     if (!chunkResponse.ok) {
                         const error = await chunkResponse.json().catch(() => ({ error: 'Network error' }));
@@ -1990,17 +2023,73 @@ export function getUnifiedPageHTML() {
                 }
             };
             
-            // 分批并发上传
+            // 改进的分批并发上传 - 增加重试机制
+            const maxRetries = 3;
+            let retryCount = 0;
+            
             for (let i = 0; i < chunks.length; i += maxConcurrency) {
                 if (hasError) break;
                 
                 const batch = chunks.slice(i, i + maxConcurrency);
-                const results = await Promise.all(batch.map(uploadChunk));
                 
-                // 检查是否有分块完成了整个上传
-                if (results.some(result => result === true)) {
-                    return;
+                try {
+                    const results = await Promise.all(batch.map(chunk => 
+                        uploadChunkWithRetry(chunk, maxRetries)
+                    ));
+                    
+                    // 检查是否有分块完成了整个上传
+                    if (results.some(result => result === true)) {
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Batch upload failed:', error);
+                    
+                    // 如果整个批次失败，尝试逐个上传
+                    if (retryCount < maxRetries) {
+                        retryCount++;
+                        console.log('Retrying batch upload, attempt:', retryCount);
+                        i -= maxConcurrency; // 重试当前批次
+                        
+                        // 降低并发数重试
+                        maxConcurrency = Math.max(1, Math.floor(maxConcurrency / 2));
+                        continue;
+                    } else {
+                        throw error;
+                    }
                 }
+            }
+            
+            // 新增重试上传函数
+            async function uploadChunkWithRetry(chunk, maxRetries) {
+                let lastError;
+                
+                for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                    try {
+                        if (attempt > 0) {
+                            console.log('Retrying chunk', chunk.index + 1, 'attempt', attempt + 1);
+                            // 重试前等待递增的时间
+                            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                        }
+                        
+                        const result = await uploadChunk(chunk);
+                        return result;
+                    } catch (error) {
+                        lastError = error;
+                        console.warn('Chunk upload failed, attempt', attempt + 1, ':', error.message);
+                        
+                        // 如果是网络错误，可以重试
+                        if (error.message.includes('NetworkError') || 
+                            error.message.includes('Failed to fetch') ||
+                            error.message.includes('timeout')) {
+                            continue;
+                        } else {
+                            // 其他错误直接抛出
+                            throw error;
+                        }
+                    }
+                }
+                
+                throw lastError;
             }
         }
         
