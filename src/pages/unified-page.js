@@ -1957,18 +1957,22 @@ export function getUnifiedPageHTML() {
                 const fileIcon = getFileIcon(file.name);
                 const downloadUrl = '/d/' + file.id;
                 
+                // 安全地转义文件名中的特殊字符
+                const safeFileName = file.name.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                const escapedFileName = file.name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                
                 card.innerHTML = 
                     '<div class="file-card-header">' +
                         '<input type="checkbox" class="file-checkbox" ' + (selectedFiles.has(file.id) ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\')">' +
                         '<div class="file-icon">' + fileIcon + '</div>' +
-                        '<div class="file-card-title">' + file.name + '</div>' +
+                        '<div class="file-card-title">' + safeFileName + '</div>' +
                     '</div>' +
                     '<div class="file-card-info">' +
                         '<span>' + formatFileSize(file.size) + '</span>' +
                         '<span>' + formatDate(file.createdTime) + '</span>' +
                     '</div>' +
                     '<div class="file-card-actions">' +
-                        '<button onclick="previewFile(\'' + file.id + '\', \'' + file.name + '\')" class="btn btn-secondary btn-xs">预览</button>' +
+                        '<button onclick="previewFile(\'' + file.id + '\', \'' + escapedFileName + '\')" class="btn btn-secondary btn-xs">预览</button>' +
                         '<button onclick="copyToClipboard(\'' + downloadUrl + '\')" class="btn btn-secondary btn-xs">复制链接</button>' +
                         '<button onclick="deleteFile(\'' + file.id + '\')" class="btn btn-danger btn-xs">删除</button>' +
                     '</div>';
