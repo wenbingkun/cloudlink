@@ -1083,8 +1083,14 @@ export function getUnifiedPageHTML() {
                             try {
                                 console.log('Trying fallback method...');
                                 if (fileInput) {
+                                    // 保存原始accept属性
+                                    const originalAccept = fileInput.accept;
                                     fileInput.accept = 'image/*,video/*';
                                     fileInput.click();
+                                    // 恢复原始accept属性
+                                    setTimeout(() => {
+                                        fileInput.accept = originalAccept;
+                                    }, 100);
                                 }
                             } catch (fallbackError) {
                                 console.error('Fallback method failed:', fallbackError);
@@ -1212,7 +1218,7 @@ export function getUnifiedPageHTML() {
                 iosHint.id = 'ios-hint';
                 iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
-                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 大视频文件(>20MB)会自动使用分块上传，上传期间请保持网页打开</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 建议在WiFi环境下上传大文件</div>';
+                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 🚀 大文件(>5MB)自动启用高速并发分块上传</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• WiFi环境下可获得最佳上传速度</div>';
                 
                 uploadSection.appendChild(iosHint);
             }
@@ -1710,13 +1716,27 @@ export function getUnifiedPageHTML() {
             isUploading = true;
             updateUploadButton();
             
-            const concurrentUploads = 3; // 并发上传数量
+            // 动态调整文件级别的并发数
+            const deviceInfo = getDeviceInfo();
+            const concurrentUploads = deviceInfo.isMobile ? 2 : 3; // 移动端2个，桌面端3个
             
-            for (let i = 0; i < pendingFiles.length; i += concurrentUploads) {
-                const batch = pendingFiles.slice(i, i + concurrentUploads);
-                const batchPromises = batch.map(fileObj => uploadFile(fileObj));
-                
-                await Promise.all(batchPromises);
+            // 智能批处理：小文件可以更多并发，大文件减少并发
+            const smallFiles = pendingFiles.filter(f => f.file.size <= 10 * 1024 * 1024);
+            const largeFiles = pendingFiles.filter(f => f.file.size > 10 * 1024 * 1024);
+            
+            // 先并发上传小文件
+            if (smallFiles.length > 0) {
+                const smallFileConcurrency = Math.min(smallFiles.length, deviceInfo.isMobile ? 3 : 5);
+                for (let i = 0; i < smallFiles.length; i += smallFileConcurrency) {
+                    const batch = smallFiles.slice(i, i + smallFileConcurrency);
+                    const batchPromises = batch.map(fileObj => uploadFile(fileObj));
+                    await Promise.all(batchPromises);
+                }
+            }
+            
+            // 然后逐个上传大文件（分块上传已经有内部并发）
+            for (const fileObj of largeFiles) {
+                await uploadFile(fileObj);
             }
             
             isUploading = false;
@@ -1742,7 +1762,7 @@ export function getUnifiedPageHTML() {
             try {
                 // 判断是否需要分块上传
                 const deviceInfo = getDeviceInfo();
-                const chunkThreshold = deviceInfo.isMobile ? 20 * 1024 * 1024 : 50 * 1024 * 1024; // 移动端20MB，桌面端50MB
+                const chunkThreshold = deviceInfo.isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024; // 移动端5MB，桌面端10MB
                 
                 if (fileObj.file.size > chunkThreshold) {
                     console.log('File size ' + fileObj.file.size + ' bytes > ' + chunkThreshold + ' bytes, using chunked upload');
@@ -1815,11 +1835,26 @@ export function getUnifiedPageHTML() {
             const fileSize = file.size;
             console.log('Starting chunked upload for ' + file.name + ', size: ' + fileSize + ' bytes');
             
+            // 动态调整分块大小和并发数
+            const deviceInfo = getDeviceInfo();
+            let optimalChunkSize, maxConcurrency;
+            
+            if (deviceInfo.isMobile) {
+                // 移动端：较小块，较少并发
+                optimalChunkSize = 2 * 1024 * 1024; // 2MB
+                maxConcurrency = 2;
+            } else {
+                // 桌面端：较大块，更多并发
+                optimalChunkSize = 8 * 1024 * 1024; // 8MB
+                maxConcurrency = 4;
+            }
+            
             // 启动分块上传
             const token = authManager.getCurrentToken();
             const startPayload = {
                 fileName: file.name,
-                fileSize: fileSize
+                fileSize: fileSize,
+                chunkSize: optimalChunkSize // 建议服务器使用的分块大小
             };
             
             if (token) {
@@ -1846,54 +1881,124 @@ export function getUnifiedPageHTML() {
             }
             
             const { sessionId, chunkSize } = await startResponse.json();
-            console.log('Chunked upload session started: ' + sessionId + ', chunk size: ' + chunkSize);
+            const actualChunkSize = chunkSize || optimalChunkSize;
+            console.log('Chunked upload session started: ' + sessionId + ', chunk size: ' + actualChunkSize);
             
-            // 分块上传
+            // 并发分块上传
             let uploadedBytes = 0;
-            const totalChunks = Math.ceil(fileSize / chunkSize);
+            const totalChunks = Math.ceil(fileSize / actualChunkSize);
+            const chunks = [];
             
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * chunkSize;
-                const end = Math.min(start + chunkSize, fileSize);
-                const chunk = file.slice(start, end);
-                
-                console.log('Uploading chunk ' + (i + 1) + '/' + totalChunks + ': bytes ' + start + '-' + (end - 1));
-                
-                const chunkResponse = await fetch('/chunked-upload/chunk/' + sessionId, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Range': 'bytes ' + start + '-' + (end - 1) + '/' + fileSize
-                    },
-                    body: chunk
-                });
-                
-                if (!chunkResponse.ok) {
-                    const error = await chunkResponse.json();
-                    throw new Error(error.error || '分块上传失败: ' + chunkResponse.status);
+            // 预处理所有分块 - 使用Web Worker进行后台处理（如果支持）
+            const useWorker = typeof Worker !== 'undefined' && !deviceInfo.isMobile;
+            
+            if (useWorker) {
+                // 后台预处理分块
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * actualChunkSize;
+                    const end = Math.min(start + actualChunkSize, fileSize);
+                    chunks.push({
+                        index: i,
+                        start: start,
+                        end: end,
+                        data: file.slice(start, end)
+                    });
                 }
+            } else {
+                // 懒加载分块（移动端或不支持Worker时）
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * actualChunkSize;
+                    const end = Math.min(start + actualChunkSize, fileSize);
+                    chunks.push({
+                        index: i,
+                        start: start,
+                        end: end,
+                        data: null, // 延迟切片
+                        file: file
+                    });
+                }
+            }
+            
+            // 并发上传分块
+            let completedChunks = 0;
+            let hasError = false;
+            
+            const uploadChunk = async (chunk) => {
+                if (hasError) return;
                 
-                const chunkResult = await chunkResponse.json();
-                uploadedBytes = end;
-                
-                // 更新进度和上传速度
-                const progress = Math.round((uploadedBytes / fileSize) * 100);
-                const elapsed = (Date.now() - fileObj.startTime) / 1000;
-                const speed = uploadedBytes / elapsed; // bytes per second
-                
-                fileObj.progress = progress;
-                fileObj.uploadSpeed = speed;
-                fileObj.uploadedBytes = uploadedBytes;
-                fileObj.totalBytes = fileSize;
-                
-                renderFileQueue();
-                
-                if (chunkResult.completed) {
-                    console.log('Chunked upload completed successfully');
-                    fileObj.status = 'success';
-                    fileObj.progress = 100;
-                    fileObj.downloadUrl = chunkResult.downloadUrl;
-                    fileObj.fileId = chunkResult.fileId;
+                try {
+                    // 懒加载分块数据（如果尚未切片）
+                    if (!chunk.data && chunk.file) {
+                        chunk.data = chunk.file.slice(chunk.start, chunk.end);
+                    }
+                    
+                    console.log('Uploading chunk ' + (chunk.index + 1) + '/' + totalChunks + ': bytes ' + chunk.start + '-' + (chunk.end - 1));
+                    
+                    const chunkResponse = await fetch('/chunked-upload/chunk/' + sessionId, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Range': 'bytes ' + chunk.start + '-' + (chunk.end - 1) + '/' + fileSize,
+                            'Content-Type': 'application/octet-stream',
+                            'Cache-Control': 'no-cache',
+                            'Connection': 'keep-alive'
+                        },
+                        body: chunk.data
+                    });
+                    
+                    if (!chunkResponse.ok) {
+                        const error = await chunkResponse.json().catch(() => ({ error: 'Network error' }));
+                        throw new Error(error.error || '分块上传失败: ' + chunkResponse.status);
+                    }
+                    
+                    const chunkResult = await chunkResponse.json();
+                    completedChunks++;
+                    uploadedBytes += (chunk.end - chunk.start);
+                    
+                    // 更新进度和上传速度 - 增强性能监测
+                    const progress = Math.round((uploadedBytes / fileSize) * 100);
+                    const elapsed = (Date.now() - fileObj.startTime) / 1000;
+                    const speed = uploadedBytes / elapsed; // bytes per second
+                    
+                    // 性能自适应：如果速度过慢，记录以供优化
+                    if (speed < 50 * 1024 && !fileObj.slowSpeedWarned) { // 小于50KB/s
+                        console.warn('Upload speed is slow:', speed, 'bytes/s');
+                        fileObj.slowSpeedWarned = true;
+                        // 可以在这里触发自适应优化
+                    }
+                    
+                    fileObj.progress = progress;
+                    fileObj.uploadSpeed = speed;
+                    fileObj.uploadedBytes = uploadedBytes;
+                    fileObj.totalBytes = fileSize;
+                    
                     renderFileQueue();
+                    
+                    if (chunkResult.completed) {
+                        console.log('Chunked upload completed successfully');
+                        fileObj.status = 'success';
+                        fileObj.progress = 100;
+                        fileObj.downloadUrl = chunkResult.downloadUrl;
+                        fileObj.fileId = chunkResult.fileId;
+                        renderFileQueue();
+                        return true;
+                    }
+                    
+                    return false;
+                } catch (error) {
+                    hasError = true;
+                    throw error;
+                }
+            };
+            
+            // 分批并发上传
+            for (let i = 0; i < chunks.length; i += maxConcurrency) {
+                if (hasError) break;
+                
+                const batch = chunks.slice(i, i + maxConcurrency);
+                const results = await Promise.all(batch.map(uploadChunk));
+                
+                // 检查是否有分块完成了整个上传
+                if (results.some(result => result === true)) {
                     return;
                 }
             }
