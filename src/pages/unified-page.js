@@ -725,7 +725,7 @@ export function getUnifiedPageHTML() {
                     <div class="upload-icon">📁</div>
                     <div class="upload-text">拖拽文件到这里，或点击选择文件</div>
                     <div class="upload-hint">支持多文件上传，最大 2GB</div>
-                    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,audio/*,application/*,text/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z,.mp3,.mp4,.avi,.mov,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.ppt,.pptx,.xls,.xlsx,.csv,.rtf,.md,.json,.xml,.html,.css,.js,.lrc,.srt,.ass,.ssa,.vtt,.sub,.tar,.gz,.wav,.flac,.aac,.ogg,.mkv,.flv,.wmv">
+                    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,audio/*,*">
                 </div>
                 
                 <div class="file-queue" id="fileQueue"></div>
@@ -957,13 +957,111 @@ export function getUnifiedPageHTML() {
             function triggerFileSelection() {
                 console.log('Triggering file selection for:', deviceInfo.browser);
                 
-                // 重置文件输入，确保可以重新选择相同文件
-                fileInput.value = '';
+                // iOS Safari 特殊处理
+                if (deviceInfo.isIOS) {
+                    console.log('iOS Safari special handling');
+                    
+                    // iOS Safari 特殊处理 - 尝试最兼容的方法
+                    const fileSelectionMethod = tryIOSFileSelection();
+                    
+                    if (!fileSelectionMethod) {
+                        showToast('📱 iOS Safari 文件选择器启动失败，请重试', 'error');
+                    }
+                } else {
+                    // 其他浏览器的标准处理
+                    fileInput.value = '';
+                    
+                    setTimeout(() => {
+                        fileInput.click();
+                    }, 10);
+                }
+            }
+            
+            // iOS Safari 文件选择器的多种尝试方法
+            function tryIOSFileSelection() {
+                console.log('Trying iOS file selection methods...');
                 
-                // 小延迟确保重置生效（特别是Android）
-                setTimeout(() => {
-                    fileInput.click();
-                }, 10);
+                try {
+                    // 方法1: 优化的通用文件选择器
+                    const newFileInput = document.createElement('input');
+                    newFileInput.type = 'file';
+                    newFileInput.multiple = true;
+                    
+                    // 使用最宽泛的accept属性，让iOS自己处理文件类型
+                    newFileInput.accept = '*/*';
+                    
+                    // 设置capture属性以便更好地访问相机/相册
+                    newFileInput.setAttribute('capture', '');
+                    
+                    // 完全隐藏但保持可访问性
+                    newFileInput.style.cssText = 'position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none;';
+                    
+                    // 立即添加到DOM
+                    document.body.appendChild(newFileInput);
+                    
+                    // 监听文件选择
+                    newFileInput.addEventListener('change', function(e) {
+                        console.log('iOS file selection result:', e.target.files.length, 'files');
+                        
+                        if (e.target.files && e.target.files.length > 0) {
+                            console.log('Successfully selected files on iOS:');
+                            for (let i = 0; i < e.target.files.length; i++) {
+                                const file = e.target.files[i];
+                                console.log(\`File \${i + 1}: \${file.name} (\${file.type || 'unknown type'}) - \${file.size} bytes\`);
+                            }
+                            handleFileSelect(e);
+                            showToast(\`📱 已选择 \${e.target.files.length} 个文件\`, 'success');
+                        } else {
+                            console.log('No files selected on iOS');
+                            showToast('📱 未选择文件，可能取消了选择', 'info');
+                        }
+                        
+                        // 清理元素
+                        setTimeout(() => {
+                            if (document.body.contains(newFileInput)) {
+                                try {
+                                    document.body.removeChild(newFileInput);
+                                } catch (e) {
+                                    console.log('Cleanup error (non-critical):', e);
+                                }
+                            }
+                        }, 500);
+                    }, { once: true });
+                    
+                    // 添加错误处理
+                    newFileInput.addEventListener('error', function(e) {
+                        console.error('iOS file input error:', e);
+                        showToast('📱 文件选择器出现错误', 'error');
+                    });
+                    
+                    // 延迟触发点击以确保DOM准备就绪
+                    setTimeout(() => {
+                        try {
+                            console.log('Triggering iOS file input click...');
+                            newFileInput.click();
+                            return true;
+                        } catch (error) {
+                            console.error('iOS file input click failed:', error);
+                            
+                            // 尝试方法2: 直接使用现有的file input
+                            try {
+                                console.log('Trying fallback method...');
+                                fileInput.accept = '*/*';
+                                fileInput.click();
+                                return true;
+                            } catch (fallbackError) {
+                                console.error('Fallback method failed:', fallbackError);
+                                return false;
+                            }
+                        }
+                    }, 50);
+                    
+                    return true;
+                    
+                } catch (error) {
+                    console.error('iOS file selection setup failed:', error);
+                    return false;
+                }
             }
             
             document.getElementById('uploadBtn').addEventListener('click', startUpload);
@@ -1022,8 +1120,11 @@ export function getUnifiedPageHTML() {
                 if (deviceInfo.isIOS) {
                     console.log('iOS device detected, applying iOS-specific optimizations');
                     if (uploadHint) {
-                        uploadHint.textContent = '支持照片、视频等文件，最大 2GB';
+                        uploadHint.textContent = '📱 支持照片、视频等文件，点击选择来访问相册，最大 2GB';
                     }
+                    
+                    // 添加iOS专用提示
+                    addIOSSpecificHints();
                 } else if (deviceInfo.isAndroid) {
                     console.log('Android device detected, applying Android-specific optimizations');
                     if (uploadHint) {
@@ -1063,20 +1164,80 @@ export function getUnifiedPageHTML() {
             }
         }
         
+        // iOS专用提示和调试信息
+        function addIOSSpecificHints() {
+            // 在上传区域下方添加iOS专用说明
+            const uploadSection = document.getElementById('upload-section');
+            const existingHint = document.getElementById('ios-hint');
+            
+            if (!existingHint && uploadSection) {
+                const iosHint = document.createElement('div');
+                iosHint.id = 'ios-hint';
+                iosHint.style.cssText = `
+                    background: rgba(52, 144, 220, 0.1);
+                    border: 1px solid rgba(52, 144, 220, 0.3);
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin: 15px 0;
+                    font-size: 14px;
+                    color: #3490dc;
+                    text-align: center;
+                `;
+                
+                iosHint.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div>
+                    <div style="margin-bottom: 5px;">• 点击上传区域后，选择"照片图库"来访问相册</div>
+                    <div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div>
+                    <div>• 支持照片、视频、文档等多种格式</div>
+                `;
+                
+                uploadSection.appendChild(iosHint);
+            }
+            
+            // 记录详细的设备信息用于调试
+            console.log('=== iOS Device Debug Info ===');
+            console.log('User Agent:', navigator.userAgent);
+            console.log('Platform:', navigator.platform);
+            console.log('Vendor:', navigator.vendor);
+            console.log('Max Touch Points:', navigator.maxTouchPoints);
+            console.log('Touch Support:', 'ontouchstart' in window);
+            console.log('File API Support:', !!(window.File && window.FileReader && window.FileList && window.Blob));
+            console.log('Safari Detection:', /Safari/.test(navigator.userAgent) && !/Chrome|CriOS|FxiOS/.test(navigator.userAgent));
+            console.log('==============================');
+        }
+        
         // 设备检测函数
         function getDeviceInfo() {
             const userAgent = navigator.userAgent;
             
+            // 更强的iOS检测 - 包括iPad在iPadOS 13+中被识别为Mac的情况
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) || 
+                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+                         /iPad|iPhone|iPod|iOS/.test(navigator.platform) ||
+                         (/Safari/.test(userAgent) && /Mobile/.test(userAgent)) ||
+                         (navigator.vendor && navigator.vendor.indexOf('Apple') > -1 && 
+                          navigator.userAgent.indexOf('CriOS') === -1 && 
+                          navigator.userAgent.indexOf('FxiOS') === -1);
+            
+            // Safari 特别检测
+            const isSafari = /Safari/.test(userAgent) && !/Chrome|CriOS|FxiOS/.test(userAgent);
+            
             return {
-                isIOS: /iPad|iPhone|iPod/.test(userAgent) || 
-                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                isIOS: isIOS,
+                isSafari: isSafari,
+                isIOSSafari: isIOS && isSafari,
                 isAndroid: /Android/.test(userAgent),
                 isMobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(userAgent) ||
-                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+                         isIOS,
                 isDesktop: !/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(userAgent) &&
-                          !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+                          !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) &&
+                          !isIOS,
                 browser: getBrowserInfo(userAgent),
-                touchSupport: 'ontouchstart' in window || navigator.maxTouchPoints > 0
+                touchSupport: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+                userAgent: userAgent,
+                platform: navigator.platform,
+                maxTouchPoints: navigator.maxTouchPoints
             };
         }
         
