@@ -1173,16 +1173,7 @@ export function getUnifiedPageHTML() {
             if (!existingHint && uploadSection) {
                 const iosHint = document.createElement('div');
                 iosHint.id = 'ios-hint';
-                iosHint.style.cssText = `
-                    background: rgba(52, 144, 220, 0.1);
-                    border: 1px solid rgba(52, 144, 220, 0.3);
-                    border-radius: 10px;
-                    padding: 15px;
-                    margin: 15px 0;
-                    font-size: 14px;
-                    color: #3490dc;
-                    text-align: center;
-                `;
+                iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
                 iosHint.innerHTML = `
                     <div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div>
