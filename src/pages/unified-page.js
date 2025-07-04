@@ -893,6 +893,8 @@ export function getUnifiedPageHTML() {
         
         // 初始化事件监听器
         function initEventListeners() {
+            console.log('Initializing event listeners...');
+            
             // 标签页切换
             document.querySelectorAll('.nav-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
@@ -907,7 +909,22 @@ export function getUnifiedPageHTML() {
             // 上传相关
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('fileInput');
+            
+            console.log('Upload area element:', uploadArea);
+            console.log('File input element:', fileInput);
+            
+            if (!uploadArea) {
+                console.error('uploadArea element not found!');
+                return;
+            }
+            
+            if (!fileInput) {
+                console.error('fileInput element not found!');
+                return;
+            }
+            
             const deviceInfo = getDeviceInfo();
+            console.log('Device info:', deviceInfo);
             
             // 跨平台点击事件处理
             uploadArea.addEventListener('click', function(e) {
@@ -915,7 +932,12 @@ export function getUnifiedPageHTML() {
                 e.preventDefault();
                 e.stopPropagation();
                 
-                triggerFileSelection();
+                try {
+                    triggerFileSelection();
+                } catch (error) {
+                    console.error('Error in triggerFileSelection:', error);
+                    showToast('文件选择器启动失败，请重试', 'error');
+                }
             });
             
             // 移动端触摸事件支持
@@ -957,23 +979,40 @@ export function getUnifiedPageHTML() {
             function triggerFileSelection() {
                 console.log('Triggering file selection for:', deviceInfo.browser);
                 
+                // 确保元素存在
+                if (!fileInput) {
+                    console.error('fileInput element not found');
+                    showToast('文件选择器初始化失败', 'error');
+                    return;
+                }
+                
                 // iOS Safari 特殊处理
                 if (deviceInfo.isIOS) {
                     console.log('iOS Safari special handling');
                     
                     // iOS Safari 特殊处理 - 尝试最兼容的方法
-                    const fileSelectionMethod = tryIOSFileSelection();
-                    
-                    if (!fileSelectionMethod) {
-                        showToast('📱 iOS Safari 文件选择器启动失败，请重试', 'error');
+                    try {
+                        const fileSelectionMethod = tryIOSFileSelection();
+                        
+                        if (!fileSelectionMethod) {
+                            showToast('📱 iOS Safari 文件选择器启动失败，请重试', 'error');
+                        }
+                    } catch (error) {
+                        console.error('iOS file selection error:', error);
+                        showToast('📱 iOS 文件选择出现错误，请重试', 'error');
                     }
                 } else {
                     // 其他浏览器的标准处理
-                    fileInput.value = '';
-                    
-                    setTimeout(() => {
-                        fileInput.click();
-                    }, 10);
+                    try {
+                        fileInput.value = '';
+                        
+                        setTimeout(() => {
+                            fileInput.click();
+                        }, 10);
+                    } catch (error) {
+                        console.error('Standard file selection error:', error);
+                        showToast('文件选择器启动失败，请重试', 'error');
+                    }
                 }
             }
             
@@ -1037,19 +1076,19 @@ export function getUnifiedPageHTML() {
                         try {
                             console.log('Triggering iOS file input click...');
                             newFileInput.click();
-                            return true;
                         } catch (error) {
                             console.error('iOS file input click failed:', error);
                             
                             // 尝试方法2: 直接使用现有的file input
                             try {
                                 console.log('Trying fallback method...');
-                                fileInput.accept = '*/*';
-                                fileInput.click();
-                                return true;
+                                if (fileInput) {
+                                    fileInput.accept = 'image/*,video/*';
+                                    fileInput.click();
+                                }
                             } catch (fallbackError) {
                                 console.error('Fallback method failed:', fallbackError);
-                                return false;
+                                showToast('📱 无法启动文件选择器', 'error');
                             }
                         }
                     }, 50);
