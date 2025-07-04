@@ -1173,7 +1173,7 @@ export function getUnifiedPageHTML() {
                 iosHint.id = 'ios-hint';
                 iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
-                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 支持照片、视频等多种格式</div>';
+                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 大视频文件(>20MB)会自动使用分块上传，上传期间请保持网页打开</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 建议在WiFi环境下上传大文件</div>';
                 
                 uploadSection.appendChild(iosHint);
             }
@@ -1253,7 +1253,7 @@ export function getUnifiedPageHTML() {
             });
             
             // 添加active类到当前标签页
-            document.querySelector(\`[data-tab="\${tabName}"]\`).classList.add('active');
+            document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
             
             if (tabName === 'upload') {
                 switchToUpload();
@@ -1390,7 +1390,7 @@ export function getUnifiedPageHTML() {
             
             // 显示成功提示
             if (addedCount > 0) {
-                showToast(\`📁 已添加 \${addedCount} 个文件到上传队列\`, 'success');
+                showToast('📁 已添加 ' + addedCount + ' 个文件到上传队列', 'success');
             }
         }
         
@@ -1424,18 +1424,81 @@ export function getUnifiedPageHTML() {
                 fileStatus.textContent = getStatusText(fileObj.status);
                 fileInfo.appendChild(fileStatus);
                 
-                // 进度条（上传中）
+                // 进度条和详细信息（上传中）
                 if (fileObj.status === 'uploading') {
+                    // 进度信息容器
+                    const progressContainer = document.createElement('div');
+                    progressContainer.style.cssText = 'background: rgba(102, 126, 234, 0.05); padding: 10px; border-radius: 8px; margin-top: 8px;';
+                    
+                    // 进度百分比和速度
+                    const progressInfo = document.createElement('div');
+                    progressInfo.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; color: #666;';
+                    
+                    const progressText = document.createElement('span');
+                    progressText.textContent = (fileObj.progress || 0) + '%';
+                    
+                    const speedText = document.createElement('span');
+                    if (fileObj.uploadSpeed) {
+                        speedText.textContent = '📈 ' + formatFileSize(fileObj.uploadSpeed) + '/s';
+                    } else {
+                        speedText.textContent = '📈 计算中...';
+                    }
+                    
+                    progressInfo.appendChild(progressText);
+                    progressInfo.appendChild(speedText);
+                    progressContainer.appendChild(progressInfo);
+                    
+                    // 进度条
                     const progressBar = document.createElement('div');
-                    progressBar.className = 'progress-bar';
-                    progressBar.style.marginTop = '8px';
+                    progressBar.style.cssText = 'width: 100%; height: 6px; background: rgba(0,0,0,0.1); border-radius: 3px; overflow: hidden;';
                     
                     const progressFill = document.createElement('div');
-                    progressFill.className = 'progress-fill';
-                    progressFill.style.width = fileObj.progress + '%';
+                    progressFill.style.cssText = 'height: 100%; background: linear-gradient(45deg, #667eea, #764ba2); border-radius: 3px; transition: width 0.3s ease; width: ' + (fileObj.progress || 0) + '%;';
                     
                     progressBar.appendChild(progressFill);
-                    fileInfo.appendChild(progressBar);
+                    progressContainer.appendChild(progressBar);
+                    
+                    // 上传详情
+                    if (fileObj.uploadedBytes && fileObj.totalBytes) {
+                        const uploadDetails = document.createElement('div');
+                        uploadDetails.style.cssText = 'margin-top: 6px; font-size: 11px; color: #888; display: flex; justify-content: space-between;';
+                        
+                        const bytesInfo = document.createElement('span');
+                        bytesInfo.textContent = formatFileSize(fileObj.uploadedBytes) + ' / ' + formatFileSize(fileObj.totalBytes);
+                        
+                        const etaInfo = document.createElement('span');
+                        if (fileObj.uploadSpeed && fileObj.uploadSpeed > 0) {
+                            const remainingBytes = fileObj.totalBytes - fileObj.uploadedBytes;
+                            const etaSeconds = remainingBytes / fileObj.uploadSpeed;
+                            etaInfo.textContent = '⏱️ 剩余 ' + formatTime(etaSeconds);
+                        } else {
+                            etaInfo.textContent = '⏱️ 计算中...';
+                        }
+                        
+                        uploadDetails.appendChild(bytesInfo);
+                        uploadDetails.appendChild(etaInfo);
+                        progressContainer.appendChild(uploadDetails);
+                    }
+                    
+                    fileInfo.appendChild(progressContainer);
+                }
+                
+                // 错误信息（上传失败）
+                if (fileObj.status === 'error' && fileObj.error) {
+                    const errorContainer = document.createElement('div');
+                    errorContainer.style.cssText = 'background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); padding: 10px; border-radius: 8px; margin-top: 8px;';
+                    
+                    const errorText = document.createElement('div');
+                    errorText.style.cssText = 'color: #f44336; font-weight: 600; margin-bottom: 4px;';
+                    errorText.textContent = '❌ 上传失败';
+                    errorContainer.appendChild(errorText);
+                    
+                    const errorDetail = document.createElement('div');
+                    errorDetail.style.cssText = 'color: #f44336; font-size: 12px;';
+                    errorDetail.textContent = fileObj.error;
+                    errorContainer.appendChild(errorDetail);
+                    
+                    fileInfo.appendChild(errorContainer);
                 }
                 
                 // 下载链接（上传成功）
@@ -1492,7 +1555,7 @@ export function getUnifiedPageHTML() {
             const pendingFiles = fileQueue.filter(f => f.status === 'pending');
             
             uploadBtn.disabled = pendingFiles.length === 0 || isUploading;
-            uploadBtn.textContent = isUploading ? '上传中...' : \`开始上传 (\${pendingFiles.length})\`;
+            uploadBtn.textContent = isUploading ? '上传中...' : '开始上传 (' + pendingFiles.length + ')';
         }
         
         function removeFromQueue(fileId) {
@@ -1624,68 +1687,177 @@ export function getUnifiedPageHTML() {
             const errorCount = fileQueue.filter(f => f.status === 'error').length;
             
             if (errorCount === 0) {
-                showToast(\`所有文件上传成功 (\${successCount}个)\`, 'success');
+                showToast('所有文件上传成功 (' + successCount + '个)', 'success');
             } else {
-                showToast(\`上传完成：成功 \${successCount}个，失败 \${errorCount}个\`, 'error');
+                showToast('上传完成：成功 ' + successCount + '个，失败 ' + errorCount + '个', 'error');
             }
         }
         
         async function uploadFile(fileObj) {
             fileObj.status = 'uploading';
+            fileObj.progress = 0;
+            fileObj.uploadSpeed = 0;
+            fileObj.startTime = Date.now();
             renderFileQueue();
             
             try {
-                const formData = new FormData();
-                formData.append('file', fileObj.file);
+                // 判断是否需要分块上传
+                const deviceInfo = getDeviceInfo();
+                const chunkThreshold = deviceInfo.isMobile ? 20 * 1024 * 1024 : 50 * 1024 * 1024; // 移动端20MB，桌面端50MB
                 
-                // 如果已认证，使用token
-                const token = authManager.getCurrentToken();
-                if (token) {
-                    formData.append('password', 'admin_authenticated');
+                if (fileObj.file.size > chunkThreshold) {
+                    console.log('File size ' + fileObj.file.size + ' bytes > ' + chunkThreshold + ' bytes, using chunked upload');
+                    await uploadFileChunked(fileObj);
                 } else {
-                    // 游客模式，使用缓存的上传密码
-                    formData.append('password', uploadPassword);
-                }
-                
-                const headers = {};
-                if (token) {
-                    headers['X-Auth-Token'] = token;
-                }
-                
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    headers: headers,
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    fileObj.status = 'success';
-                    fileObj.downloadUrl = result.downloadUrl;
-                    fileObj.fileId = result.fileId;
-                } else {
-                    let errorMessage = '上传失败';
-                    try {
-                        const error = await response.json();
-                        errorMessage = getFriendlyErrorMessage(response.status, error.error || '');
-                    } catch (e) {
-                        errorMessage = getFriendlyErrorMessage(response.status, '');
-                    }
-                    
-                    fileObj.status = 'error';
-                    fileObj.error = errorMessage;
-                    
-                    // 如果是密码错误，清除缓存的密码
-                    if (errorMessage.includes('密码') || errorMessage.includes('认证')) {
-                        uploadPassword = null;
-                    }
+                    console.log('File size ' + fileObj.file.size + ' bytes <= ' + chunkThreshold + ' bytes, using normal upload');
+                    await uploadFileNormal(fileObj);
                 }
             } catch (error) {
+                console.error('Upload error:', error);
                 fileObj.status = 'error';
                 fileObj.error = getFriendlyErrorMessage(0, error.message);
+                renderFileQueue();
+            }
+        }
+        
+        async function uploadFileNormal(fileObj) {
+            const formData = new FormData();
+            formData.append('file', fileObj.file);
+            
+            // 如果已认证，使用token
+            const token = authManager.getCurrentToken();
+            if (token) {
+                formData.append('password', 'admin_authenticated');
+            } else {
+                // 游客模式，使用缓存的上传密码
+                formData.append('password', uploadPassword);
+            }
+            
+            const headers = {};
+            if (token) {
+                headers['X-Auth-Token'] = token;
+            }
+            
+            const response = await fetch('/upload', {
+                method: 'POST',
+                headers: headers,
+                body: formData
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                fileObj.status = 'success';
+                fileObj.progress = 100;
+                fileObj.downloadUrl = result.downloadUrl;
+                fileObj.fileId = result.fileId;
+            } else {
+                let errorMessage = '上传失败';
+                try {
+                    const error = await response.json();
+                    errorMessage = getFriendlyErrorMessage(response.status, error.error || '');
+                } catch (e) {
+                    errorMessage = getFriendlyErrorMessage(response.status, '');
+                }
+                
+                fileObj.status = 'error';
+                fileObj.error = errorMessage;
+                
+                // 如果是密码错误，清除缓存的密码
+                if (errorMessage.includes('密码') || errorMessage.includes('认证')) {
+                    uploadPassword = null;
+                }
             }
             
             renderFileQueue();
+        }
+        
+        async function uploadFileChunked(fileObj) {
+            const file = fileObj.file;
+            const fileSize = file.size;
+            console.log('Starting chunked upload for ' + file.name + ', size: ' + fileSize + ' bytes');
+            
+            // 启动分块上传
+            const token = authManager.getCurrentToken();
+            const startPayload = {
+                fileName: file.name,
+                fileSize: fileSize
+            };
+            
+            if (token) {
+                // 管理员模式
+            } else {
+                // 游客模式
+                startPayload.password = uploadPassword;
+            }
+            
+            const startHeaders = { 'Content-Type': 'application/json' };
+            if (token) {
+                startHeaders['X-Auth-Token'] = token;
+            }
+            
+            const startResponse = await fetch('/chunked-upload/start', {
+                method: 'POST',
+                headers: startHeaders,
+                body: JSON.stringify(startPayload)
+            });
+            
+            if (!startResponse.ok) {
+                const error = await startResponse.json();
+                throw new Error(error.error || '启动分块上传失败: ' + startResponse.status);
+            }
+            
+            const { sessionId, chunkSize } = await startResponse.json();
+            console.log('Chunked upload session started: ' + sessionId + ', chunk size: ' + chunkSize);
+            
+            // 分块上传
+            let uploadedBytes = 0;
+            const totalChunks = Math.ceil(fileSize / chunkSize);
+            
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * chunkSize;
+                const end = Math.min(start + chunkSize, fileSize);
+                const chunk = file.slice(start, end);
+                
+                console.log('Uploading chunk ' + (i + 1) + '/' + totalChunks + ': bytes ' + start + '-' + (end - 1));
+                
+                const chunkResponse = await fetch('/chunked-upload/chunk/' + sessionId, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Range': 'bytes ' + start + '-' + (end - 1) + '/' + fileSize
+                    },
+                    body: chunk
+                });
+                
+                if (!chunkResponse.ok) {
+                    const error = await chunkResponse.json();
+                    throw new Error(error.error || '分块上传失败: ' + chunkResponse.status);
+                }
+                
+                const chunkResult = await chunkResponse.json();
+                uploadedBytes = end;
+                
+                // 更新进度和上传速度
+                const progress = Math.round((uploadedBytes / fileSize) * 100);
+                const elapsed = (Date.now() - fileObj.startTime) / 1000;
+                const speed = uploadedBytes / elapsed; // bytes per second
+                
+                fileObj.progress = progress;
+                fileObj.uploadSpeed = speed;
+                fileObj.uploadedBytes = uploadedBytes;
+                fileObj.totalBytes = fileSize;
+                
+                renderFileQueue();
+                
+                if (chunkResult.completed) {
+                    console.log('Chunked upload completed successfully');
+                    fileObj.status = 'success';
+                    fileObj.progress = 100;
+                    fileObj.downloadUrl = chunkResult.downloadUrl;
+                    fileObj.fileId = chunkResult.fileId;
+                    renderFileQueue();
+                    return;
+                }
+            }
         }
         
         // 管理界面相关函数
@@ -1744,24 +1916,23 @@ export function getUnifiedPageHTML() {
                 }
                 
                 const fileIcon = getFileIcon(file.name);
-                const downloadUrl = \`/d/\${file.id}\`;
+                const downloadUrl = '/d/' + file.id;
                 
-                card.innerHTML = \`
-                    <div class="file-card-header">
-                        <input type="checkbox" class="file-checkbox" \${selectedFiles.has(file.id) ? 'checked' : ''} onchange="toggleFileSelection('\${file.id}')">
-                        <div class="file-icon">\${fileIcon}</div>
-                        <div class="file-card-title">\${file.name}</div>
-                    </div>
-                    <div class="file-card-info">
-                        <span>\${formatFileSize(file.size)}</span>
-                        <span>\${formatDate(file.createdTime)}</span>
-                    </div>
-                    <div class="file-card-actions">
-                        <button onclick="previewFile('\${file.id}', '\${file.name}')" class="btn btn-secondary btn-xs">预览</button>
-                        <button onclick="copyToClipboard('\${downloadUrl}')" class="btn btn-secondary btn-xs">复制链接</button>
-                        <button onclick="deleteFile('\${file.id}')" class="btn btn-danger btn-xs">删除</button>
-                    </div>
-                \`;
+                card.innerHTML = 
+                    '<div class="file-card-header">' +
+                        '<input type="checkbox" class="file-checkbox" ' + (selectedFiles.has(file.id) ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\')">' +
+                        '<div class="file-icon">' + fileIcon + '</div>' +
+                        '<div class="file-card-title">' + file.name + '</div>' +
+                    '</div>' +
+                    '<div class="file-card-info">' +
+                        '<span>' + formatFileSize(file.size) + '</span>' +
+                        '<span>' + formatDate(file.createdTime) + '</span>' +
+                    '</div>' +
+                    '<div class="file-card-actions">' +
+                        '<button onclick="previewFile(\'' + file.id + '\', \'' + file.name + '\')" class="btn btn-secondary btn-xs">预览</button>' +
+                        '<button onclick="copyToClipboard(\'' + downloadUrl + '\')" class="btn btn-secondary btn-xs">复制链接</button>' +
+                        '<button onclick="deleteFile(\'' + file.id + '\')" class="btn btn-danger btn-xs">删除</button>' +
+                    '</div>';
                 
                 container.appendChild(card);
             });
@@ -1841,7 +2012,7 @@ export function getUnifiedPageHTML() {
             
             try {
                 const token = authManager.getCurrentToken();
-                const response = await fetch(\`/admin/delete/\${fileId}\`, {
+                const response = await fetch('/admin/delete/' + fileId, {
                     method: 'DELETE',
                     headers: {
                         'X-Auth-Token': token
@@ -1864,12 +2035,12 @@ export function getUnifiedPageHTML() {
         async function deleteSelected() {
             if (selectedFiles.size === 0) return;
             
-            const confirmed = await showConfirmModal(\`确定要删除选中的 \${selectedFiles.size} 个文件吗？\`);
+            const confirmed = await showConfirmModal('确定要删除选中的 ' + selectedFiles.size + ' 个文件吗？');
             if (!confirmed) return;
             
             const promises = Array.from(selectedFiles).map(fileId => {
                 const token = authManager.getCurrentToken();
-                return fetch(\`/admin/delete/\${fileId}\`, {
+                return fetch('/admin/delete/' + fileId, {
                     method: 'DELETE',
                     headers: {
                         'X-Auth-Token': token
@@ -1889,7 +2060,7 @@ export function getUnifiedPageHTML() {
         }
         
         function previewFile(fileId, fileName) {
-            const downloadUrl = \`/d/\${fileId}\`;
+            const downloadUrl = '/d/' + fileId;
             window.open(downloadUrl, '_blank');
         }
         
@@ -1909,6 +2080,9 @@ export function getUnifiedPageHTML() {
                     }
                     if (originalError.includes('认证失败') || originalError.includes('密码错误')) {
                         return '🔐 密码错误，请重新输入正确的上传密码';
+                    }
+                    if (originalError.includes('分块上传失败') || originalError.includes('启动分块上传失败')) {
+                        return '📦 大文件上传失败，可能是网络问题或服务器临时不可用，请稍后重试';
                     }
                     return '❌ 文件格式或内容有问题：' + originalError;
                 
@@ -1938,16 +2112,22 @@ export function getUnifiedPageHTML() {
                     // 网络错误或其他异常
                     if (statusCode === 0) {
                         if (originalError.includes('Failed to fetch') || originalError.includes('NetworkError')) {
-                            return '🌐 网络连接失败，请检查网络后重试';
+                            return '🌐 网络连接失败，大文件上传需要稳定网络，请检查网络后重试';
                         }
-                        if (originalError.includes('timeout')) {
-                            return '⏱️ 连接超时，请检查网络连接';
+                        if (originalError.includes('timeout') || originalError.includes('超时')) {
+                            return '⏱️ 上传超时，大文件需要更长时间，请检查网络连接并重试';
+                        }
+                        if (originalError.includes('分块上传失败')) {
+                            return '📦 大文件分块上传失败，网络可能不稳定，请稍后重试';
                         }
                         return '🔗 网络错误：' + originalError;
                     }
                     
                     // 如果有原始错误信息，优化显示
                     if (originalError) {
+                        if (originalError.includes('mov') || originalError.includes('video')) {
+                            return '🎬 视频文件上传失败：' + originalError + '（提示：大视频文件建议在WiFi环境下上传）';
+                        }
                         return '❗ ' + originalError;
                     }
                     
@@ -1970,6 +2150,19 @@ export function getUnifiedPageHTML() {
                 hour: '2-digit',
                 minute: '2-digit'
             });
+        }
+        
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return Math.ceil(seconds) + '秒';
+            } else if (seconds < 3600) {
+                const minutes = Math.ceil(seconds / 60);
+                return minutes + '分钟';
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.ceil((seconds % 3600) / 60);
+                return hours + '小时' + (minutes > 0 ? minutes + '分钟' : '');
+            }
         }
         
         function getStatusText(status) {
@@ -2035,7 +2228,7 @@ export function getUnifiedPageHTML() {
         
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
-            toast.className = \`toast \${type}\`;
+            toast.className = 'toast ' + type;
             toast.textContent = message;
             
             document.body.appendChild(toast);
