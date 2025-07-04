@@ -987,11 +987,9 @@ export function getUnifiedPageHTML() {
                     newFileInput.type = 'file';
                     newFileInput.multiple = true;
                     
-                    // 使用最宽泛的accept属性，让iOS自己处理文件类型
-                    newFileInput.accept = '*/*';
-                    
-                    // 设置capture属性以便更好地访问相机/相册
-                    newFileInput.setAttribute('capture', '');
+                    // iOS Safari 需要特定的accept属性来访问相册
+                    // 不设置capture属性，让用户选择相机或相册
+                    newFileInput.accept = 'image/*,video/*';
                     
                     // 完全隐藏但保持可访问性
                     newFileInput.style.cssText = 'position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none;';
@@ -1175,7 +1173,7 @@ export function getUnifiedPageHTML() {
                 iosHint.id = 'ios-hint';
                 iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
-                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，选择"照片图库"来访问相册</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 支持照片、视频、文档等多种格式</div>';
+                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，会弹出选择框</div><div style="margin-bottom: 5px;">• 选择"照片图库"来访问相册中的照片和视频</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 支持照片、视频等多种格式</div>';
                 
                 uploadSection.appendChild(iosHint);
             }
