@@ -1007,10 +1007,10 @@ export function getUnifiedPageHTML() {
                             console.log('Successfully selected files on iOS:');
                             for (let i = 0; i < e.target.files.length; i++) {
                                 const file = e.target.files[i];
-                                console.log(\`File \${i + 1}: \${file.name} (\${file.type || 'unknown type'}) - \${file.size} bytes\`);
+                                console.log('File ' + (i + 1) + ': ' + file.name + ' (' + (file.type || 'unknown type') + ') - ' + file.size + ' bytes');
                             }
                             handleFileSelect(e);
-                            showToast(\`📱 已选择 \${e.target.files.length} 个文件\`, 'success');
+                            showToast('📱 已选择 ' + e.target.files.length + ' 个文件', 'success');
                         } else {
                             console.log('No files selected on iOS');
                             showToast('📱 未选择文件，可能取消了选择', 'info');
@@ -1175,12 +1175,7 @@ export function getUnifiedPageHTML() {
                 iosHint.id = 'ios-hint';
                 iosHint.style.cssText = 'background: rgba(52, 144, 220, 0.1); border: 1px solid rgba(52, 144, 220, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; font-size: 14px; color: #3490dc; text-align: center;';
                 
-                iosHint.innerHTML = `
-                    <div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div>
-                    <div style="margin-bottom: 5px;">• 点击上传区域后，选择"照片图库"来访问相册</div>
-                    <div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div>
-                    <div>• 支持照片、视频、文档等多种格式</div>
-                `;
+                iosHint.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">📱 iOS Safari 用户提示</div><div style="margin-bottom: 5px;">• 点击上传区域后，选择"照片图库"来访问相册</div><div style="margin-bottom: 5px;">• 如果无法选择，请尝试刷新页面重试</div><div>• 支持照片、视频、文档等多种格式</div>';
                 
                 uploadSection.appendChild(iosHint);
             }
