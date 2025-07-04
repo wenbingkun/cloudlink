@@ -9,7 +9,9 @@ const corsHeaders = {
 
 const authManager = new ServerAuthManager();
 
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+const MIN_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB minimum
+const MAX_CHUNK_SIZE = 16 * 1024 * 1024; // 16MB maximum
 const uploadSessions = new Map(); // 在生产环境中应使用持久化存储
 
 export async function handleChunkedUpload(request, env, driveAPI, path, url) {
@@ -38,7 +40,7 @@ export async function handleChunkedUpload(request, env, driveAPI, path, url) {
 async function handleUploadStart(request, env, driveAPI, url) {
   try {
     const data = await request.json();
-    const { fileName, fileSize, password } = data;
+    const { fileName, fileSize, password, chunkSize: requestedChunkSize } = data;
     const authToken = request.headers.get('X-Auth-Token');
 
     // 认证检查：支持管理员token或上传密码
@@ -115,10 +117,23 @@ async function handleUploadStart(request, env, driveAPI, url) {
     // 清理过期会话（超过1小时）
     cleanupExpiredSessions();
 
+    // 动态选择最优分块大小
+    let optimalChunkSize = requestedChunkSize || DEFAULT_CHUNK_SIZE;
+    
+    // 确保分块大小在合理范围内
+    optimalChunkSize = Math.max(MIN_CHUNK_SIZE, Math.min(MAX_CHUNK_SIZE, optimalChunkSize));
+    
+    // 根据文件大小调整分块大小
+    if (fileSize < 50 * 1024 * 1024) { // 小于50MB
+      optimalChunkSize = Math.min(optimalChunkSize, 2 * 1024 * 1024); // 最大2MB
+    } else if (fileSize > 500 * 1024 * 1024) { // 大于500MB
+      optimalChunkSize = Math.max(optimalChunkSize, 8 * 1024 * 1024); // 最小8MB
+    }
+
     return new Response(JSON.stringify({
       sessionId,
-      chunkSize: CHUNK_SIZE,
-      totalChunks: Math.ceil(fileSize / CHUNK_SIZE)
+      chunkSize: optimalChunkSize,
+      totalChunks: Math.ceil(fileSize / optimalChunkSize)
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
