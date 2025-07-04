@@ -1963,7 +1963,7 @@ export function getUnifiedPageHTML() {
                 
                 card.innerHTML = 
                     '<div class="file-card-header">' +
-                        '<input type="checkbox" class="file-checkbox" ' + (selectedFiles.has(file.id) ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\')">' +
+                        '<input type="checkbox" class="file-checkbox" ' + (selectedFiles.has(file.id) ? 'checked' : '') + ' onchange="toggleFileSelection(&quot;' + file.id + '&quot;)">' +
                         '<div class="file-icon">' + fileIcon + '</div>' +
                         '<div class="file-card-title">' + safeFileName + '</div>' +
                     '</div>' +
@@ -1972,9 +1972,9 @@ export function getUnifiedPageHTML() {
                         '<span>' + formatDate(file.createdTime) + '</span>' +
                     '</div>' +
                     '<div class="file-card-actions">' +
-                        '<button onclick="previewFile(\'' + file.id + '\', \'' + escapedFileName + '\')" class="btn btn-secondary btn-xs">预览</button>' +
-                        '<button onclick="copyToClipboard(\'' + downloadUrl + '\')" class="btn btn-secondary btn-xs">复制链接</button>' +
-                        '<button onclick="deleteFile(\'' + file.id + '\')" class="btn btn-danger btn-xs">删除</button>' +
+                        '<button onclick="previewFile(&quot;' + file.id + '&quot;,&quot;' + escapedFileName + '&quot;)" class="btn btn-secondary btn-xs">预览</button>' +
+                        '<button onclick="copyToClipboard(&quot;' + downloadUrl + '&quot;)" class="btn btn-secondary btn-xs">复制链接</button>' +
+                        '<button onclick="deleteFile(&quot;' + file.id + '&quot;)" class="btn btn-danger btn-xs">删除</button>' +
                     '</div>';
                 
                 container.appendChild(card);
