@@ -1,4 +1,3 @@
-import { getAdminPageHTML } from './pages/admin-page.js';
 import { ServerAuthManager } from './auth-manager.js';
 
 const corsHeaders = {
