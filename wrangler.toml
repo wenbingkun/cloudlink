@@ -2,15 +2,16 @@ name = "cloudlink"
 main = "src/index.js"
 compatibility_date = "2024-01-15"
 
-# Add this binding to serve static assets
-[vars]
-ASSETS = { binding = "ASSETS", path = "./public" }
-
 # KV 存储绑定用于持久化上传会话
 [[kv_namespaces]]
 binding = "UPLOAD_SESSIONS"
 preview_id = "0add2e2994ab4b49aead9cb8a57836ea"
 id = "084265f6541d4d3aaac83316d16be8c0"
+
+# Static assets serving
+[assets]
+directory = "./public"
+binding = "ASSETS"
 
 [vars]
 UPLOAD_PASSWORD = "CloudLink_Upload_2024!@#"
