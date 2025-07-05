@@ -3288,6 +3288,10 @@ export function getUnifiedPageHTML() {
                 strategy += '-big-file';
             }
             
+            // 临时解决HTTP 500问题：强制使用保守策略
+            maxConcurrency = Math.min(maxConcurrency, 2); // 强制最大2个并发
+            chunkSize = Math.min(chunkSize, 4 * 1024 * 1024); // 强制最大4MB分块
+            
             // 浏览器并发限制
             const browserConcurrencyLimit = deviceInfo.isMobile ? 12 : 20;
             maxConcurrency = Math.min(maxConcurrency, browserConcurrencyLimit);

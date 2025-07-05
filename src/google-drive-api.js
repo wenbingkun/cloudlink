@@ -193,6 +193,12 @@ export class GoogleDriveAPI {
   async uploadChunk(uploadUrl, chunk, start, totalSize) {
     const end = start + chunk.byteLength - 1;
     
+    console.log('🔗 Google Drive uploadChunk:', {
+      range: `${start}-${end}/${totalSize}`,
+      chunkSize: chunk.byteLength,
+      uploadUrl: uploadUrl.substring(0, 50) + '...'
+    });
+    
     const response = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
@@ -202,17 +208,39 @@ export class GoogleDriveAPI {
       body: chunk,
     });
 
+    console.log('📡 Google Drive response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: {
+        'content-type': response.headers.get('Content-Type'),
+        'range': response.headers.get('Range'),
+        'retry-after': response.headers.get('Retry-After'),
+        'x-goog-quota-error': response.headers.get('X-Goog-Quota-Error')
+      }
+    });
+
     if (response.status === 200 || response.status === 201) {
       // 上传完成
-      return { completed: true, result: await response.json() };
+      const result = await response.json();
+      console.log('✅ Upload completed:', result);
+      return { completed: true, result };
     } else if (response.status === 308) {
       // 需要继续上传
       const range = response.headers.get('Range');
       const nextStart = range ? parseInt(range.split('-')[1]) + 1 : start + chunk.byteLength;
+      console.log('📄 Continue upload:', { range, nextStart });
       return { completed: false, nextStart };
     } else {
       const errorText = await response.text();
-      throw new Error(`Chunk upload failed: ${response.statusText} - ${errorText}`);
+      console.error('❌ Google Drive upload error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        range: `${start}-${end}`,
+        chunkSize: chunk.byteLength,
+        uploadUrl: uploadUrl.substring(0, 50) + '...'
+      });
+      throw new Error(`Chunk upload failed: HTTP ${response.status} ${response.statusText} - ${errorText}`);
     }
   }
 

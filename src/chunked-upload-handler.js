@@ -152,13 +152,24 @@ async function handleUploadStart(request, env, driveAPI, url) {
 }
 
 async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
+  const startTime = Date.now();
   try {
-    console.log('Processing chunk upload for session:', sessionId);
+    const contentRange = request.headers.get('Content-Range');
+    const contentLength = request.headers.get('Content-Length');
+    const userAgent = request.headers.get('User-Agent')?.substring(0, 100);
+    
+    console.log('🔄 Processing chunk upload:', {
+      sessionId,
+      contentRange,
+      contentLength,
+      userAgent,
+      timestamp: new Date().toISOString()
+    });
     
     // 从KV存储读取会话
     const sessionData = await env.UPLOAD_SESSIONS.get(sessionId);
     if (!sessionData) {
-      console.log('Session not found in KV:', sessionId);
+      console.error('❌ Session not found in KV:', sessionId);
       return new Response(JSON.stringify({ error: '上传会话不存在或已过期' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -166,9 +177,13 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
     }
     
     const session = JSON.parse(sessionData);
-    console.log('Session loaded from KV:', sessionId, 'bytesUploaded:', session.bytesUploaded);
+    console.log('✅ Session loaded:', {
+      sessionId,
+      bytesUploaded: session.bytesUploaded,
+      fileSize: session.fileSize,
+      progress: Math.round((session.bytesUploaded / session.fileSize) * 100) + '%'
+    });
 
-    const contentRange = request.headers.get('Content-Range');
     if (!contentRange) {
       return new Response(JSON.stringify({ error: '缺少 Content-Range 头' }), {
         status: 400,
@@ -242,9 +257,19 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
     }
 
   } catch (error) {
-    console.error('Chunk upload error:', error);
+    const processingTime = Date.now() - startTime;
+    console.error('💥 Chunk upload failed:', {
+      sessionId,
+      error: error.message,
+      stack: error.stack?.substring(0, 300),
+      processingTime: processingTime + 'ms',
+      timestamp: new Date().toISOString()
+    });
+    
     return new Response(JSON.stringify({ 
-      error: '分块上传失败：' + error.message 
+      error: '分块上传失败：' + error.message,
+      sessionId,
+      processingTime
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
