@@ -9,10 +9,10 @@ const corsHeaders = {
 
 const authManager = new ServerAuthManager();
 
-const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks (增加默认大小)
 const MIN_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB minimum
-const MAX_CHUNK_SIZE = 16 * 1024 * 1024; // 16MB maximum
-const uploadSessions = new Map(); // 在生产环境中应使用持久化存储
+const MAX_CHUNK_SIZE = 64 * 1024 * 1024; // 64MB maximum (增加最大分块)
+// 使用KV存储替代内存Map，实现持久化会话管理
 
 export async function handleChunkedUpload(request, env, driveAPI, path, url) {
   const segments = path.split('/');
@@ -112,10 +112,12 @@ async function handleUploadStart(request, env, driveAPI, url) {
       lastActivity: Date.now()
     };
 
-    uploadSessions.set(sessionId, session);
+    // 将会话存储到KV，设置24小时过期
+    await env.UPLOAD_SESSIONS.put(sessionId, JSON.stringify(session), {
+      expirationTtl: 86400 // 24小时过期
+    });
 
-    // 清理过期会话（超过1小时）
-    cleanupExpiredSessions();
+    console.log('Upload session created and stored in KV:', sessionId);
 
     // 动态选择最优分块大小
     let optimalChunkSize = requestedChunkSize || DEFAULT_CHUNK_SIZE;
@@ -151,13 +153,20 @@ async function handleUploadStart(request, env, driveAPI, url) {
 
 async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
   try {
-    const session = uploadSessions.get(sessionId);
-    if (!session) {
+    console.log('Processing chunk upload for session:', sessionId);
+    
+    // 从KV存储读取会话
+    const sessionData = await env.UPLOAD_SESSIONS.get(sessionId);
+    if (!sessionData) {
+      console.log('Session not found in KV:', sessionId);
       return new Response(JSON.stringify({ error: '上传会话不存在或已过期' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
+    
+    const session = JSON.parse(sessionData);
+    console.log('Session loaded from KV:', sessionId, 'bytesUploaded:', session.bytesUploaded);
 
     const contentRange = request.headers.get('Content-Range');
     if (!contentRange) {
@@ -180,23 +189,28 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
     const end = parseInt(rangeMatch[2]);
     const total = parseInt(rangeMatch[3]);
 
+    console.log('Chunk details:', { start, end, total, sessionId });
     const chunkData = await request.arrayBuffer();
+    console.log('Chunk data size:', chunkData.byteLength);
 
     // 上传块到 Google Drive
+    console.log('Uploading chunk to Google Drive...');
     const result = await driveAPI.uploadChunk(
       session.uploadUrl,
       chunkData,
       start,
       total
     );
+    console.log('Google Drive upload result:', result);
 
     // 更新会话状态
     session.bytesUploaded = end + 1;
     session.lastActivity = Date.now();
 
     if (result.completed) {
-      // 上传完成
-      uploadSessions.delete(sessionId);
+      // 上传完成，删除KV会话
+      console.log('Upload completed for session:', sessionId);
+      await env.UPLOAD_SESSIONS.delete(sessionId);
       
       const downloadUrl = `${url.origin}/d/${result.result.id}`;
       
@@ -205,16 +219,23 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
         downloadUrl,
         fileName: session.fileName,
         fileId: result.result.id,
-        fileSize: session.fileSize
+        fileSize: session.fileSize,
+        serverLog: 'Upload completed successfully'
       }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     } else {
-      // 继续上传
+      // 继续上传，更新KV中的会话
+      await env.UPLOAD_SESSIONS.put(sessionId, JSON.stringify(session), {
+        expirationTtl: 86400 // 24小时过期
+      });
+      
+      console.log('Chunk uploaded, continuing session:', sessionId, 'Progress:', session.bytesUploaded, '/', session.fileSize);
       return new Response(JSON.stringify({
         completed: false,
         bytesUploaded: session.bytesUploaded,
-        nextStart: result.nextStart || session.bytesUploaded
+        nextStart: result.nextStart || session.bytesUploaded,
+        serverLog: `Chunk processed, ${session.bytesUploaded}/${session.fileSize} bytes uploaded`
       }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
@@ -233,20 +254,23 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
 
 async function handleUploadStatus(request, env, driveAPI, sessionId, url) {
   try {
-    const session = uploadSessions.get(sessionId);
-    if (!session) {
+    // 从KV存储读取会话
+    const sessionData = await env.UPLOAD_SESSIONS.get(sessionId);
+    if (!sessionData) {
       return new Response(JSON.stringify({ error: '上传会话不存在或已过期' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
+    
+    const session = JSON.parse(sessionData);
 
     // 检查 Google Drive 上传状态
     const status = await driveAPI.checkUploadStatus(session.uploadUrl, session.fileSize);
 
     if (status.completed) {
-      // 上传完成
-      uploadSessions.delete(sessionId);
+      // 上传完成，删除KV会话
+      await env.UPLOAD_SESSIONS.delete(sessionId);
       
       const downloadUrl = `${url.origin}/d/${status.result.id}`;
       
@@ -259,9 +283,13 @@ async function handleUploadStatus(request, env, driveAPI, sessionId, url) {
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     } else {
-      // 更新会话状态
+      // 更新会话状态并保存到KV
       session.bytesUploaded = status.bytesUploaded || session.bytesUploaded;
       session.lastActivity = Date.now();
+      
+      await env.UPLOAD_SESSIONS.put(sessionId, JSON.stringify(session), {
+        expirationTtl: 86400 // 24小时过期
+      });
 
       return new Response(JSON.stringify({
         completed: false,
@@ -284,13 +312,4 @@ async function handleUploadStatus(request, env, driveAPI, sessionId, url) {
   }
 }
 
-function cleanupExpiredSessions() {
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-
-  for (const [sessionId, session] of uploadSessions.entries()) {
-    if (now - session.lastActivity > oneHour) {
-      uploadSessions.delete(sessionId);
-    }
-  }
-}
+// KV存储自动处理过期，无需手动清理会话

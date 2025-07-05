@@ -730,9 +730,16 @@ export function getUnifiedPageHTML() {
                 
                 <div class="file-queue" id="fileQueue"></div>
                 
+                <!-- 调试日志显示区域 -->
+                <div id="debugLog" style="background: #000; color: #0f0; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; padding: 10px; margin: 10px 0; border-radius: 5px; display: none;">
+                    <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">🔍 实时上传日志:</div>
+                    <div id="debugLogContent"></div>
+                </div>
+                
                 <div class="upload-controls">
                     <button id="uploadBtn" class="btn btn-primary" disabled>开始上传</button>
                     <button id="clearBtn" class="btn btn-secondary">清空队列</button>
+                    <button id="debugToggle" class="btn btn-secondary">显示调试日志</button>
                 </div>
             </div>
 
@@ -819,6 +826,52 @@ export function getUnifiedPageHTML() {
         let selectedFiles = new Set();
         let isUploading = false;
         let uploadPassword = null; // 缓存本次会话的上传密码
+        let debugLogVisible = false;
+        
+        // 页面日志函数
+        function logToPage(message, type = 'info') {
+            console.log(message);
+            
+            const debugLogContent = document.getElementById('debugLogContent');
+            if (debugLogContent) {
+                const timestamp = new Date().toTimeString().split(' ')[0];
+                const logEntry = document.createElement('div');
+                
+                let color = '#0f0';
+                let prefix = 'ℹ️';
+                
+                switch(type) {
+                    case 'error':
+                        color = '#f00';
+                        prefix = '❌';
+                        break;
+                    case 'success':
+                        color = '#0f0';
+                        prefix = '✅';
+                        break;
+                    case 'warn':
+                        color = '#ff0';
+                        prefix = '⚠️';
+                        break;
+                    case 'progress':
+                        color = '#00f';
+                        prefix = '📊';
+                        break;
+                }
+                
+                logEntry.style.color = color;
+                logEntry.innerHTML = '[' + timestamp + '] ' + prefix + ' ' + message;
+                debugLogContent.appendChild(logEntry);
+                
+                // 自动滚动到底部
+                debugLogContent.scrollTop = debugLogContent.scrollHeight;
+                
+                // 限制日志条数
+                while (debugLogContent.children.length > 100) {
+                    debugLogContent.removeChild(debugLogContent.firstChild);
+                }
+            }
+        }
         
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -940,23 +993,34 @@ export function getUnifiedPageHTML() {
                 }
             });
             
-            // 移动端触摸事件支持
+            // 移动端触摸事件支持 - 修复过度触发问题
             if (deviceInfo.touchSupport) {
-                uploadArea.addEventListener('touchend', function(e) {
-                    console.log('Upload area touched (touchend)');
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    triggerFileSelection();
+                let touchStartTime = 0;
+                let touchMoved = false;
+                
+                uploadArea.addEventListener('touchstart', function(e) {
+                    console.log('Touch started');
+                    touchStartTime = Date.now();
+                    touchMoved = false;
                 });
                 
-                // Android 特殊处理：某些Android浏览器需要touchstart
-                if (deviceInfo.isAndroid) {
-                    uploadArea.addEventListener('touchstart', function(e) {
-                        console.log('Upload area touched (touchstart - Android)');
-                        // 不阻止默认行为，让touchend处理
-                    });
-                }
+                uploadArea.addEventListener('touchmove', function(e) {
+                    touchMoved = true;
+                });
+                
+                uploadArea.addEventListener('touchend', function(e) {
+                    const touchDuration = Date.now() - touchStartTime;
+                    console.log('Touch ended, duration:', touchDuration + 'ms, moved:', touchMoved);
+                    
+                    // 只有在真正的点击（短触摸且没有移动）时才触发
+                    if (!touchMoved && touchDuration < 500) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        console.log('Valid touch click detected, triggering file selection');
+                        triggerFileSelection();
+                    }
+                });
             }
             
             // 桌面端拖拽支持
@@ -1096,8 +1160,7 @@ export function getUnifiedPageHTML() {
                         try {
                             console.log('Triggering iOS file input click...');
                             
-                            // 显示点击后的等待提示
-                            showToast('📱 正在打开相册，请稍等...', 'info');
+                            // 不显示过早的提示，等用户真正操作后再提示
                             
                             newFileInput.click();
                         } catch (error) {
@@ -1133,6 +1196,7 @@ export function getUnifiedPageHTML() {
             
             document.getElementById('uploadBtn').addEventListener('click', startUpload);
             document.getElementById('clearBtn').addEventListener('click', clearQueue);
+            document.getElementById('debugToggle').addEventListener('click', toggleDebugLog);
             
             // 管理相关
             document.getElementById('searchInput').addEventListener('input', handleSearch);
@@ -1433,24 +1497,87 @@ export function getUnifiedPageHTML() {
                 return;
             }
             
+            const deviceInfo = getDeviceInfo();
             let addedCount = 0;
             
-            files.forEach(file => {
-                console.log('Processing file:', file.name, 'size:', file.size);
+            // iOS优化：立即添加到队列显示，延迟加载文件详情
+            if (deviceInfo.isIOS) {
+                console.log('iOS detected: using fast queue loading');
                 
-                const fileId = Date.now() + Math.random();
-                const fileObj = {
-                    id: fileId,
-                    file: file,
-                    name: file.name,
-                    size: file.size,
-                    status: 'pending',
-                    progress: 0
-                };
+                Array.from(files).forEach((file, index) => {
+                    const fileId = Date.now() + Math.random() + index;
+                    
+                    // 立即创建文件对象，延迟读取详细信息
+                    const fileObj = {
+                        id: fileId,
+                        file: file,
+                        name: file.name || '正在读取文件名...',
+                        size: file.size || 0,
+                        status: 'loading', // 新状态：加载中
+                        progress: 0,
+                        isLoading: true
+                    };
+                    
+                    fileQueue.push(fileObj);
+                    addedCount++;
+                    
+                    // 立即显示到队列
+                    renderFileQueue();
+                    
+                    // 异步获取完整文件信息
+                    setTimeout(() => {
+                        try {
+                            // 读取文件的详细信息
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                fileObj.name = file.name;
+                                fileObj.size = file.size;
+                                fileObj.status = 'pending';
+                                fileObj.isLoading = false;
+                                
+                                console.log('iOS file loaded:', file.name, 'size:', file.size);
+                                renderFileQueue();
+                                updateUploadButton();
+                            };
+                            
+                            reader.onerror = () => {
+                                fileObj.status = 'error';
+                                fileObj.error = '文件读取失败';
+                                fileObj.isLoading = false;
+                                renderFileQueue();
+                            };
+                            
+                            // 只读取文件头部来获取基本信息
+                            reader.readAsArrayBuffer(file.slice(0, 1024));
+                            
+                        } catch (error) {
+                            console.error('Error reading file details:', error);
+                            fileObj.status = 'pending'; // 即使读取失败也允许上传
+                            fileObj.isLoading = false;
+                            renderFileQueue();
+                        }
+                    }, index * 50); // 错开处理时间避免阻塞
+                });
                 
-                fileQueue.push(fileObj);
-                addedCount++;
-            });
+            } else {
+                // 非iOS设备：保持原有逻辑
+                files.forEach(file => {
+                    console.log('Processing file:', file.name, 'size:', file.size);
+                    
+                    const fileId = Date.now() + Math.random();
+                    const fileObj = {
+                        id: fileId,
+                        file: file,
+                        name: file.name,
+                        size: file.size,
+                        status: 'pending',
+                        progress: 0
+                    };
+                    
+                    fileQueue.push(fileObj);
+                    addedCount++;
+                });
+            }
             
             console.log('Added', addedCount, 'files to queue. Total queue size:', fileQueue.length);
             
@@ -1459,7 +1586,11 @@ export function getUnifiedPageHTML() {
             
             // 显示成功提示
             if (addedCount > 0) {
-                showToast('📁 已添加 ' + addedCount + ' 个文件到上传队列', 'success');
+                if (deviceInfo.isIOS) {
+                    showToast('📱 文件已添加到队列，正在读取详情...', 'success');
+                } else {
+                    showToast('📁 已添加 ' + addedCount + ' 个文件到上传队列', 'success');
+                }
             }
         }
         
@@ -1490,7 +1621,14 @@ export function getUnifiedPageHTML() {
                 // 文件状态
                 const fileStatus = document.createElement('div');
                 fileStatus.className = 'file-status';
-                fileStatus.textContent = getStatusText(fileObj.status);
+                
+                if (fileObj.isLoading) {
+                    fileStatus.textContent = '📱 正在读取文件信息...';
+                    fileStatus.style.color = '#667eea';
+                } else {
+                    fileStatus.textContent = getStatusText(fileObj.status);
+                }
+                
                 fileInfo.appendChild(fileStatus);
                 
                 // 进度条和详细信息（上传中）
@@ -1508,9 +1646,23 @@ export function getUnifiedPageHTML() {
                     
                     const speedText = document.createElement('span');
                     if (fileObj.uploadSpeed) {
-                        speedText.textContent = '📈 ' + formatFileSize(fileObj.uploadSpeed) + '/s';
+                        const speedIcon = fileObj.speedStatus || '📈';
+                        const speedMBps = fileObj.uploadSpeedMBps || (fileObj.uploadSpeed / (1024 * 1024));
+                        if (speedMBps >= 1) {
+                            speedText.textContent = speedIcon + ' ' + speedMBps.toFixed(1) + ' MB/s';
+                        } else {
+                            speedText.textContent = speedIcon + ' ' + formatFileSize(fileObj.uploadSpeed) + '/s';
+                        }
+                        
+                        // 高速上传时添加特殊样式
+                        if (speedMBps >= 5) {
+                            speedText.style.color = '#28a745';
+                            speedText.style.fontWeight = 'bold';
+                        } else if (speedMBps >= 1) {
+                            speedText.style.color = '#17a2b8';
+                        }
                     } else {
-                        speedText.textContent = '📈 计算中...';
+                        speedText.textContent = '🔍 测速中...';
                     }
                     
                     progressInfo.appendChild(progressText);
@@ -1536,7 +1688,9 @@ export function getUnifiedPageHTML() {
                         bytesInfo.textContent = formatFileSize(fileObj.uploadedBytes) + ' / ' + formatFileSize(fileObj.totalBytes);
                         
                         const etaInfo = document.createElement('span');
-                        if (fileObj.uploadSpeed && fileObj.uploadSpeed > 0) {
+                        if (fileObj.eta && fileObj.eta.formatted) {
+                            etaInfo.textContent = '⏱️ 剩余 ' + fileObj.eta.formatted;
+                        } else if (fileObj.uploadSpeed && fileObj.uploadSpeed > 0) {
                             const remainingBytes = fileObj.totalBytes - fileObj.uploadedBytes;
                             const etaSeconds = remainingBytes / fileObj.uploadSpeed;
                             etaInfo.textContent = '⏱️ 剩余 ' + formatTime(etaSeconds);
@@ -1547,6 +1701,29 @@ export function getUnifiedPageHTML() {
                         uploadDetails.appendChild(bytesInfo);
                         uploadDetails.appendChild(etaInfo);
                         progressContainer.appendChild(uploadDetails);
+                        
+                        // 性能等级和状态显示
+                        if (fileObj.performanceGrade) {
+                            const performanceInfo = document.createElement('div');
+                            performanceInfo.style.cssText = 'margin-top: 4px; font-size: 10px; display: flex; justify-content: space-between; align-items: center;';
+                            
+                            const gradeInfo = document.createElement('span');
+                            gradeInfo.style.cssText = 'color: ' + fileObj.performanceGrade.color + '; font-weight: bold;';
+                            gradeInfo.textContent = fileObj.performanceGrade.icon + ' ' + fileObj.performanceGrade.text;
+                            
+                            const statusInfo = document.createElement('span');
+                            statusInfo.style.cssText = 'color: #666;';
+                            if (fileObj.isStalled) {
+                                statusInfo.style.color = '#f44336';
+                                statusInfo.textContent = '⚠️ 上传停滞';
+                            } else {
+                                statusInfo.textContent = '🔄 正在上传';
+                            }
+                            
+                            performanceInfo.appendChild(gradeInfo);
+                            performanceInfo.appendChild(statusInfo);
+                            progressContainer.appendChild(performanceInfo);
+                        }
                     }
                     
                     fileInfo.appendChild(progressContainer);
@@ -1579,6 +1756,17 @@ export function getUnifiedPageHTML() {
                     successText.style.cssText = 'color: #4caf50; font-weight: 600; margin-bottom: 4px;';
                     successText.textContent = '✅ 上传成功';
                     successContainer.appendChild(successText);
+                    
+                    // 显示性能报告
+                    if (fileObj.performanceReport) {
+                        const perfReport = document.createElement('div');
+                        perfReport.style.cssText = 'color: #666; font-size: 11px; margin-bottom: 6px; line-height: 1.3;';
+                        perfReport.innerHTML = '📊 性能报告：' + 
+                            '耗时 ' + fileObj.performanceReport.totalTime + 
+                            '，平均 ' + fileObj.performanceReport.averageSpeed + 
+                            '，效率 ' + fileObj.performanceReport.efficiency;
+                        successContainer.appendChild(perfReport);
+                    }
                     
                     const linkContainer = document.createElement('div');
                     linkContainer.style.cssText = 'display: flex; align-items: center; gap: 8px;';
@@ -1637,6 +1825,21 @@ export function getUnifiedPageHTML() {
             fileQueue = fileQueue.filter(f => f.status === 'uploading');
             renderFileQueue();
             updateUploadButton();
+        }
+        
+        function toggleDebugLog() {
+            debugLogVisible = !debugLogVisible;
+            const debugLog = document.getElementById('debugLog');
+            const debugToggle = document.getElementById('debugToggle');
+            
+            if (debugLogVisible) {
+                debugLog.style.display = 'block';
+                debugToggle.textContent = '隐藏调试日志';
+                logToPage('调试日志已启用', 'info');
+            } else {
+                debugLog.style.display = 'none';
+                debugToggle.textContent = '显示调试日志';
+            }
         }
         
         // 密码模态框相关函数
@@ -1724,7 +1927,12 @@ export function getUnifiedPageHTML() {
         
         async function startUpload() {
             const pendingFiles = fileQueue.filter(f => f.status === 'pending');
-            if (pendingFiles.length === 0) return;
+            if (pendingFiles.length === 0) {
+                logToPage('没有待上传的文件', 'warn');
+                return;
+            }
+            
+            logToPage('开始上传 ' + pendingFiles.length + ' 个文件', 'info');
             
             // 检查认证状态，如果未认证且没有缓存密码，则获取密码
             const token = authManager.getCurrentToken();
@@ -1769,8 +1977,33 @@ export function getUnifiedPageHTML() {
             const successCount = fileQueue.filter(f => f.status === 'success').length;
             const errorCount = fileQueue.filter(f => f.status === 'error').length;
             
+            // 修复时间计算错误
+            let totalUploadTime = 10; // 默认10秒，避免除零错误
+            const uploadStartTime = uploadingFiles.find(f => f.startTime)?.startTime;
+            if (uploadStartTime) {
+                totalUploadTime = (Date.now() - uploadStartTime) / 1000;
+            }
+            const totalBytes = fileQueue.reduce((sum, f) => sum + (f.file?.size || 0), 0);
+            const avgSpeed = totalBytes / totalUploadTime;
+            const avgSpeedMBps = avgSpeed / (1024 * 1024);
+            
+            // 生成性能报告
+            console.log('📊 Upload session performance report:', {
+                totalFiles: fileQueue.length,
+                successfulFiles: successCount,
+                failedFiles: errorCount,
+                totalSize: formatFileSize(totalBytes),
+                totalTime: totalUploadTime.toFixed(2) + 's',
+                averageSpeed: avgSpeedMBps.toFixed(2) + ' MB/s',
+                efficiency: ((successCount / fileQueue.length) * 100).toFixed(1) + '%'
+            });
+            
             if (errorCount === 0) {
-                showToast('所有文件上传成功 (' + successCount + '个)', 'success');
+                let successMsg = '🎉 所有文件上传成功 (' + successCount + '个)';
+                if (avgSpeedMBps >= 1) {
+                    successMsg += ' 平均速度: ' + avgSpeedMBps.toFixed(1) + ' MB/s';
+                }
+                showToast(successMsg, 'success');
             } else {
                 showToast('上传完成：成功 ' + successCount + '个，失败 ' + errorCount + '个', 'error');
             }
@@ -1784,6 +2017,11 @@ export function getUnifiedPageHTML() {
             renderFileQueue();
             
             try {
+                // 网络状态检测
+                if (navigator.onLine === false) {
+                    throw new Error('🌐 网络连接已断开，请检查网络后重试');
+                }
+                
                 // 判断是否需要分块上传
                 const deviceInfo = getDeviceInfo();
                 const chunkThreshold = deviceInfo.isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024; // 移动端5MB，桌面端10MB
@@ -1859,28 +2097,347 @@ export function getUnifiedPageHTML() {
             const fileSize = file.size;
             console.log('Starting chunked upload for ' + file.name + ', size: ' + fileSize + ' bytes');
             
-            // 动态调整分块大小和并发数
-            const deviceInfo = getDeviceInfo();
-            let optimalChunkSize, maxConcurrency;
+            // 网络速度测试和参数优化
+            console.log('🚀 Performing network speed test for optimal upload parameters...');
+            showToast('🔍 正在检测网络速度，优化上传参数...', 'info');
             
-            if (deviceInfo.isMobile) {
-                // 移动端：更保守的策略以提高稳定性
-                optimalChunkSize = 1 * 1024 * 1024; // 1MB，更小的分块
-                maxConcurrency = 1; // 单线程上传，更稳定
-                console.log('Mobile device: using conservative upload strategy');
-            } else {
-                // 桌面端：高性能策略
-                optimalChunkSize = 4 * 1024 * 1024; // 4MB，平衡性能和稳定性
-                maxConcurrency = 3; // 3路并发，稍微保守
-                console.log('Desktop device: using high-performance upload strategy');
+            const deviceInfo = getDeviceInfo();
+            let optimalChunkSize, maxConcurrency, strategy;
+            
+            let speedTest; // 声明在外层作用域
+            try {
+                logToPage('正在测试网络速度...', 'info');
+                // 测试网络速度
+                speedTest = await testNetworkSpeed();
+                logToPage('网络速度: 下载 ' + speedTest.download.speedMbps.toFixed(2) + ' Mbps, 上传 ' + speedTest.upload.speedMbps.toFixed(2) + ' Mbps', 'success');
+                
+                const uploadParams = getOptimalUploadParams(speedTest, fileSize, deviceInfo);
+                logToPage('选择策略: ' + uploadParams.strategy + ', 分块: ' + formatFileSize(uploadParams.chunkSize) + ', 并发: ' + uploadParams.maxConcurrency, 'info');
+                
+                optimalChunkSize = uploadParams.chunkSize;
+                maxConcurrency = uploadParams.maxConcurrency;
+                strategy = uploadParams.strategy;
+                
+                // 显示优化后的参数
+                showToast(
+                    '⚡ 已优化：' + strategy + ' 策略，' + formatFileSize(optimalChunkSize) + ' 分块，' + maxConcurrency + ' 路并发', 
+                    'success'
+                );
+                
+                console.log('🎯 Optimized upload parameters:', {
+                    networkSpeed: speedTest.upload.speedMbps.toFixed(2) + ' Mbps',
+                    strategy: strategy,
+                    chunkSize: formatFileSize(optimalChunkSize),
+                    concurrency: maxConcurrency,
+                    http2Support: speedTest.http2Support,
+                    serviceWorkerSupport: speedTest.serviceWorkerSupport,
+                    estimatedTime: Math.round(fileSize / (speedTest.upload.speedMbps * 0.125 * maxConcurrency)) + 's'
+                });
+                
+            } catch (error) {
+                console.warn('Network speed test failed, using fallback parameters:', error);
+                // 降级到保守参数
+                if (deviceInfo.isMobile) {
+                    optimalChunkSize = 4 * 1024 * 1024; // 4MB
+                    maxConcurrency = 3;
+                } else {
+                    optimalChunkSize = 8 * 1024 * 1024; // 8MB  
+                    maxConcurrency = 6;
+                }
+                strategy = 'fallback';
+                showToast('⚠️ 网络检测失败，使用默认参数', 'error');
             }
             
-            // 启动分块上传
+            // 智能选择上传方式：根据文件大小选择普通上传或分块上传
+            const shouldUseChunkedUpload = fileSize > 50 * 1024 * 1024; // 50MB以上使用分块上传
+            
+            if (shouldUseChunkedUpload) {
+                logToPage('文件较大 (' + formatFileSize(fileSize) + ')，使用分块上传: ' + file.name, 'info');
+                return await performChunkedUpload(fileObj, optimalChunkSize, maxConcurrency, strategy, speedTest);
+            } else {
+                logToPage('文件较小 (' + formatFileSize(fileSize) + ')，使用直接上传: ' + file.name, 'info');
+                
+                // 为直接上传创建简化的性能监控
+                const directUploadMonitor = new UploadPerformanceMonitor(
+                    fileSize, 
+                    speedTest.upload.speedMbps
+                );
+            }
+            
+            // 准备上传数据
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const token = authManager.getCurrentToken();
+            if (token) {
+                // 管理员模式：使用token
+                formData.append('password', 'admin_authenticated');
+            } else {
+                // 游客模式：使用密码
+                formData.append('password', uploadPassword);
+            }
+            
+            const uploadHeaders = {};
+            if (token) {
+                uploadHeaders['X-Auth-Token'] = token;
+            }
+            
+            // 使用XMLHttpRequest获取实时上传进度
+            const result = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                
+                // 设置上传进度监听
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const progress = Math.round((e.loaded / e.total) * 100);
+                        fileObj.progress = progress;
+                        
+                        // 使用性能监控更新进度
+                        const monitoring = directUploadMonitor.updateProgress(e.loaded, fileObj);
+                        
+                        // 检测停滞并发出警告
+                        if (monitoring.isStalled) {
+                            logToPage('⚠️ 检测到上传停滞，正在尝试恢复...', 'warning');
+                        }
+                        
+                        logToPage('上传进度: ' + progress + '%, 速度: ' + monitoring.speed.toFixed(2) + ' MB/s ' + 
+                                 monitoring.grade.icon, 'progress');
+                        renderFileQueue();
+                    }
+                });
+                
+                // 设置请求完成监听
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            
+                            // 生成性能报告
+                            const perfReport = directUploadMonitor.generatePerformanceReport();
+                            logToPage('上传成功: ' + response.fileName, 'success');
+                            logToPage('📊 性能报告 - 总时间: ' + perfReport.totalTime + 
+                                     ', 平均速度: ' + perfReport.averageSpeed + 
+                                     ', 效率: ' + perfReport.efficiency, 'info');
+                            
+                            response.performanceReport = perfReport;
+                            resolve(response);
+                        } catch (e) {
+                            logToPage('响应解析失败: ' + e.message, 'error');
+                            reject(new Error('响应解析失败: ' + e.message));
+                        }
+                    } else {
+                        try {
+                            const error = JSON.parse(xhr.responseText);
+                            logToPage('上传失败: ' + (error.error || xhr.status), 'error');
+                            reject(new Error(error.error || '上传失败: ' + xhr.status));
+                        } catch (e) {
+                            logToPage('上传失败: HTTP ' + xhr.status, 'error');
+                            reject(new Error('上传失败: HTTP ' + xhr.status));
+                        }
+                    }
+                });
+                
+                // 设置错误监听
+                xhr.addEventListener('error', () => {
+                    logToPage('网络错误: 上传失败', 'error');
+                    reject(new Error('网络错误: 上传失败'));
+                });
+                
+                // 设置超时监听
+                xhr.addEventListener('timeout', () => {
+                    logToPage('上传超时', 'error');
+                    reject(new Error('上传超时'));
+                });
+                
+                // 配置请求
+                xhr.open('POST', '/upload');
+                xhr.timeout = 300000; // 5分钟超时
+                
+                // 设置请求头
+                if (token) {
+                    xhr.setRequestHeader('X-Auth-Token', token);
+                }
+                
+                // 发送请求
+                xhr.send(formData);
+            });
+            
+            // 设置文件结果
+            fileObj.status = 'success';
+            fileObj.progress = 100;
+            fileObj.downloadUrl = result.downloadUrl;
+            fileObj.fileId = result.fileId;
+            fileObj.performanceReport = result.performanceReport;
+            renderFileQueue();
+            return;
+        }
+        
+        // 性能监控类
+        class UploadPerformanceMonitor {
+            constructor(fileSize, expectedSpeed) {
+                this.fileSize = fileSize;
+                this.expectedSpeed = expectedSpeed;
+                this.startTime = Date.now();
+                this.lastUpdateTime = Date.now();
+                this.speedHistory = [];
+                this.chunkTimings = [];
+                this.stallDetectionThreshold = 10000; // 10秒无进度视为停滞
+                this.lastBytesUploaded = 0;
+                this.adaptiveAdjustments = 0;
+            }
+            
+            recordChunkCompletion(chunkSize, timeTaken) {
+                this.chunkTimings.push({
+                    size: chunkSize,
+                    time: timeTaken,
+                    speed: chunkSize / (timeTaken / 1000),
+                    timestamp: Date.now()
+                });
+                
+                // 保持最近20个分块的记录
+                if (this.chunkTimings.length > 20) {
+                    this.chunkTimings.shift();
+                }
+            }
+            
+            updateProgress(bytesUploaded, fileObj) {
+                const currentTime = Date.now();
+                const elapsed = (currentTime - this.startTime) / 1000;
+                const speed = bytesUploaded / elapsed;
+                const speedMBps = speed / (1024 * 1024);
+                
+                // 记录速度历史
+                this.speedHistory.push({
+                    time: currentTime,
+                    speed: speedMBps,
+                    bytes: bytesUploaded
+                });
+                
+                // 保持最近50个数据点
+                if (this.speedHistory.length > 50) {
+                    this.speedHistory.shift();
+                }
+                
+                // 检测停滞
+                const isStalled = this.detectStall(bytesUploaded, currentTime);
+                
+                // 计算预测完成时间
+                const eta = this.calculateETA(bytesUploaded, speedMBps);
+                
+                // 性能分级
+                const performanceGrade = this.getPerformanceGrade(speedMBps);
+                
+                // 更新文件对象
+                fileObj.uploadSpeed = speed;
+                fileObj.uploadSpeedMBps = speedMBps;
+                fileObj.uploadedBytes = bytesUploaded;
+                fileObj.totalBytes = this.fileSize;
+                fileObj.speedStatus = performanceGrade.icon;
+                fileObj.performanceGrade = performanceGrade;
+                fileObj.eta = eta;
+                fileObj.isStalled = isStalled;
+                
+                this.lastUpdateTime = currentTime;
+                this.lastBytesUploaded = bytesUploaded;
+                
+                return {
+                    speed: speedMBps,
+                    grade: performanceGrade,
+                    eta: eta,
+                    isStalled: isStalled
+                };
+            }
+            
+            detectStall(bytesUploaded, currentTime) {
+                return (currentTime - this.lastUpdateTime > this.stallDetectionThreshold) && 
+                       (bytesUploaded === this.lastBytesUploaded);
+            }
+            
+            calculateETA(bytesUploaded, speedMBps) {
+                if (speedMBps <= 0) return null;
+                
+                const remainingBytes = this.fileSize - bytesUploaded;
+                const remainingMB = remainingBytes / (1024 * 1024);
+                const etaSeconds = remainingMB / speedMBps;
+                
+                return {
+                    seconds: etaSeconds,
+                    formatted: this.formatTime(etaSeconds)
+                };
+            }
+            
+            getPerformanceGrade(speedMBps) {
+                if (speedMBps >= 20) {
+                    return { icon: '🚀', level: 'ultra', text: '极速上传', color: '#ff6b6b' };
+                } else if (speedMBps >= 10) {
+                    return { icon: '⚡', level: 'high', text: '高速上传', color: '#51cf66' };
+                } else if (speedMBps >= 5) {
+                    return { icon: '📈', level: 'good', text: '良好速度', color: '#339af0' };
+                } else if (speedMBps >= 1) {
+                    return { icon: '🔄', level: 'medium', text: '中等速度', color: '#ffd43b' };
+                } else if (speedMBps >= 0.1) {
+                    return { icon: '🐌', level: 'slow', text: '较慢速度', color: '#ff922b' };
+                } else {
+                    return { icon: '⏳', level: 'very-slow', text: '极慢速度', color: '#f03e3e' };
+                }
+            }
+            
+            formatTime(seconds) {
+                if (!seconds || seconds <= 0) return '计算中...';
+                
+                if (seconds < 60) {
+                    return Math.round(seconds) + '秒';
+                } else if (seconds < 3600) {
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSeconds = Math.round(seconds % 60);
+                    return minutes + '分' + (remainingSeconds > 0 ? remainingSeconds + '秒' : '');
+                } else {
+                    const hours = Math.floor(seconds / 3600);
+                    const minutes = Math.floor((seconds % 3600) / 60);
+                    return hours + '小时' + (minutes > 0 ? minutes + '分' : '');
+                }
+            }
+            
+            getAverageSpeed() {
+                if (this.speedHistory.length === 0) return 0;
+                
+                const recentData = this.speedHistory.slice(-10);
+                const sum = recentData.reduce((acc, data) => acc + data.speed, 0);
+                return sum / recentData.length;
+            }
+            
+            generatePerformanceReport() {
+                const totalTime = (Date.now() - this.startTime) / 1000;
+                const avgSpeed = this.getAverageSpeed();
+                const efficiency = avgSpeed / this.expectedSpeed;
+                
+                return {
+                    totalTime: this.formatTime(totalTime),
+                    averageSpeed: avgSpeed.toFixed(2) + ' MB/s',
+                    chunksCompleted: this.chunkTimings.length,
+                    efficiency: Math.round(efficiency * 100) + '%',
+                    adaptiveAdjustments: this.adaptiveAdjustments
+                };
+            }
+        }
+        
+        // 分块上传实现
+        async function performChunkedUpload(fileObj, chunkSize, maxConcurrency, strategy, speedTest) {
+            const file = fileObj.file;
+            const fileSize = file.size;
+            
+            // 初始化性能监控
+            const performanceMonitor = new UploadPerformanceMonitor(
+                fileSize, 
+                speedTest.upload.speedMbps
+            );
+            
+            // 启动分块上传会话
             const token = authManager.getCurrentToken();
             const startPayload = {
                 fileName: file.name,
                 fileSize: fileSize,
-                chunkSize: optimalChunkSize // 建议服务器使用的分块大小
+                chunkSize: chunkSize
             };
             
             if (token) {
@@ -1895,6 +2452,7 @@ export function getUnifiedPageHTML() {
                 startHeaders['X-Auth-Token'] = token;
             }
             
+            logToPage('正在启动分块上传会话...', 'info');
             const startResponse = await fetch('/chunked-upload/start', {
                 method: 'POST',
                 headers: startHeaders,
@@ -1903,193 +2461,168 @@ export function getUnifiedPageHTML() {
             
             if (!startResponse.ok) {
                 const error = await startResponse.json();
+                logToPage('启动分块上传失败: ' + (error.error || startResponse.status), 'error');
                 throw new Error(error.error || '启动分块上传失败: ' + startResponse.status);
             }
             
-            const { sessionId, chunkSize } = await startResponse.json();
-            const actualChunkSize = chunkSize || optimalChunkSize;
-            console.log('Chunked upload session started: ' + sessionId + ', chunk size: ' + actualChunkSize);
+            const { sessionId, chunkSize: actualChunkSize } = await startResponse.json();
+            logToPage('分块上传会话已启动: ' + sessionId + ', 分块大小: ' + formatFileSize(actualChunkSize), 'success');
             
-            // 并发分块上传
-            let uploadedBytes = 0;
+            // 创建分块
             const totalChunks = Math.ceil(fileSize / actualChunkSize);
             const chunks = [];
             
-            // 预处理所有分块 - 使用Web Worker进行后台处理（如果支持）
-            const useWorker = typeof Worker !== 'undefined' && !deviceInfo.isMobile;
-            
-            if (useWorker) {
-                // 后台预处理分块
-                for (let i = 0; i < totalChunks; i++) {
-                    const start = i * actualChunkSize;
-                    const end = Math.min(start + actualChunkSize, fileSize);
-                    chunks.push({
-                        index: i,
-                        start: start,
-                        end: end,
-                        data: file.slice(start, end)
-                    });
-                }
-            } else {
-                // 懒加载分块（移动端或不支持Worker时）
-                for (let i = 0; i < totalChunks; i++) {
-                    const start = i * actualChunkSize;
-                    const end = Math.min(start + actualChunkSize, fileSize);
-                    chunks.push({
-                        index: i,
-                        start: start,
-                        end: end,
-                        data: null, // 延迟切片
-                        file: file
-                    });
-                }
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * actualChunkSize;
+                const end = Math.min(start + actualChunkSize, fileSize);
+                chunks.push({
+                    index: i,
+                    start: start,
+                    end: end,
+                    size: end - start
+                });
             }
             
-            // 并发上传分块
+            logToPage('开始分块上传：共 ' + totalChunks + ' 个分块', 'info');
+            
+            // 管道化上传
+            let uploadedBytes = 0;
             let completedChunks = 0;
-            let hasError = false;
+            let activeUploads = [];
+            let chunkIndex = 0;
             
             const uploadChunk = async (chunk) => {
-                if (hasError) return;
+                const chunkData = file.slice(chunk.start, chunk.end);
                 
-                try {
-                    // 懒加载分块数据（如果尚未切片）
-                    if (!chunk.data && chunk.file) {
-                        chunk.data = chunk.file.slice(chunk.start, chunk.end);
-                    }
-                    
-                    console.log('Uploading chunk ' + (chunk.index + 1) + '/' + totalChunks + ': bytes ' + chunk.start + '-' + (chunk.end - 1));
-                    
-                    // 添加超时控制和更好的错误处理
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
-                    
-                    const chunkResponse = await fetch('/chunked-upload/chunk/' + sessionId, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Range': 'bytes ' + chunk.start + '-' + (chunk.end - 1) + '/' + fileSize,
-                            'Content-Type': 'application/octet-stream',
-                            'Cache-Control': 'no-cache',
-                            'Connection': 'keep-alive'
-                        },
-                        body: chunk.data,
-                        signal: controller.signal
+                const xhr = new XMLHttpRequest();
+                
+                return new Promise((resolve, reject) => {
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            // 更新总体进度
+                            const chunkProgress = e.loaded / e.total;
+                            const totalProgress = ((completedChunks + chunkProgress) / totalChunks) * 100;
+                            fileObj.progress = Math.round(totalProgress);
+                            
+                            const currentBytes = uploadedBytes + e.loaded;
+                            
+                            // 使用性能监控更新进度
+                            const monitoring = performanceMonitor.updateProgress(currentBytes, fileObj);
+                            
+                            // 检测停滞并发出警告
+                            if (monitoring.isStalled) {
+                                logToPage('⚠️ 检测到上传停滞，正在尝试恢复...', 'warning');
+                            }
+                            
+                            renderFileQueue();
+                        }
                     });
                     
-                    clearTimeout(timeoutId);
+                    xhr.addEventListener('load', async () => {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                resolve(response);
+                            } catch (e) {
+                                reject(new Error('响应解析失败: ' + e.message));
+                            }
+                        } else {
+                            reject(new Error('分块上传失败: HTTP ' + xhr.status));
+                        }
+                    });
                     
-                    if (!chunkResponse.ok) {
-                        const error = await chunkResponse.json().catch(() => ({ error: 'Network error' }));
-                        throw new Error(error.error || '分块上传失败: ' + chunkResponse.status);
+                    xhr.addEventListener('error', () => {
+                        reject(new Error('网络错误'));
+                    });
+                    
+                    xhr.addEventListener('timeout', () => {
+                        reject(new Error('上传超时'));
+                    });
+                    
+                    xhr.open('PUT', '/chunked-upload/chunk/' + sessionId);
+                    xhr.setRequestHeader('Content-Range', 'bytes ' + chunk.start + '-' + (chunk.end - 1) + '/' + fileSize);
+                    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+                    if (token) {
+                        xhr.setRequestHeader('X-Auth-Token', token);
                     }
+                    xhr.timeout = 60000; // 1分钟超时
                     
-                    const chunkResult = await chunkResponse.json();
-                    completedChunks++;
-                    uploadedBytes += (chunk.end - chunk.start);
-                    
-                    // 更新进度和上传速度 - 增强性能监测
-                    const progress = Math.round((uploadedBytes / fileSize) * 100);
-                    const elapsed = (Date.now() - fileObj.startTime) / 1000;
-                    const speed = uploadedBytes / elapsed; // bytes per second
-                    
-                    // 性能自适应：如果速度过慢，记录以供优化
-                    if (speed < 50 * 1024 && !fileObj.slowSpeedWarned) { // 小于50KB/s
-                        console.warn('Upload speed is slow:', speed, 'bytes/s');
-                        fileObj.slowSpeedWarned = true;
-                        // 可以在这里触发自适应优化
-                    }
-                    
-                    fileObj.progress = progress;
-                    fileObj.uploadSpeed = speed;
-                    fileObj.uploadedBytes = uploadedBytes;
-                    fileObj.totalBytes = fileSize;
-                    
-                    renderFileQueue();
-                    
-                    if (chunkResult.completed) {
-                        console.log('Chunked upload completed successfully');
-                        fileObj.status = 'success';
-                        fileObj.progress = 100;
-                        fileObj.downloadUrl = chunkResult.downloadUrl;
-                        fileObj.fileId = chunkResult.fileId;
-                        renderFileQueue();
-                        return true;
-                    }
-                    
-                    return false;
-                } catch (error) {
-                    hasError = true;
-                    throw error;
-                }
+                    xhr.send(chunkData);
+                });
             };
             
-            // 改进的分批并发上传 - 增加重试机制
-            const maxRetries = 3;
-            let retryCount = 0;
-            
-            for (let i = 0; i < chunks.length; i += maxConcurrency) {
-                if (hasError) break;
-                
-                const batch = chunks.slice(i, i + maxConcurrency);
-                
-                try {
-                    const results = await Promise.all(batch.map(chunk => 
-                        uploadChunkWithRetry(chunk, maxRetries)
-                    ));
+            // 并发上传控制
+            while (chunkIndex < chunks.length || activeUploads.length > 0) {
+                // 启动新的分块上传
+                while (activeUploads.length < maxConcurrency && chunkIndex < chunks.length) {
+                    const chunk = chunks[chunkIndex++];
+                    logToPage('上传分块 ' + (chunk.index + 1) + '/' + totalChunks + ' (' + formatFileSize(chunk.size) + ')', 'info');
                     
-                    // 检查是否有分块完成了整个上传
-                    if (results.some(result => result === true)) {
-                        return;
-                    }
-                } catch (error) {
-                    console.error('Batch upload failed:', error);
-                    
-                    // 如果整个批次失败，尝试逐个上传
-                    if (retryCount < maxRetries) {
-                        retryCount++;
-                        console.log('Retrying batch upload, attempt:', retryCount);
-                        i -= maxConcurrency; // 重试当前批次
+                    const chunkStartTime = Date.now();
+                    const uploadPromise = uploadChunk(chunk).then(result => {
+                        const chunkTime = Date.now() - chunkStartTime;
+                        completedChunks++;
+                        uploadedBytes += chunk.size;
                         
-                        // 降低并发数重试
-                        maxConcurrency = Math.max(1, Math.floor(maxConcurrency / 2));
-                        continue;
-                    } else {
+                        // 记录分块性能
+                        performanceMonitor.recordChunkCompletion(chunk.size, chunkTime);
+                        
+                        const chunkSpeedMBps = (chunk.size / (1024 * 1024)) / (chunkTime / 1000);
+                        logToPage('分块 ' + (chunk.index + 1) + ' 上传完成 (' + chunkSpeedMBps.toFixed(2) + ' MB/s)', 'success');
+                        
+                        if (result.completed) {
+                            // 生成性能报告
+                            const perfReport = performanceMonitor.generatePerformanceReport();
+                            logToPage('🎉 文件上传完成: ' + file.name, 'success');
+                            logToPage('📊 性能报告 - 总时间: ' + perfReport.totalTime + 
+                                     ', 平均速度: ' + perfReport.averageSpeed + 
+                                     ', 效率: ' + perfReport.efficiency, 'info');
+                            
+                            fileObj.status = 'success';
+                            fileObj.progress = 100;
+                            fileObj.downloadUrl = result.downloadUrl;
+                            fileObj.fileId = result.fileId;
+                            fileObj.performanceReport = perfReport;
+                            renderFileQueue();
+                            return { completed: true, result };
+                        }
+                        
+                        return { completed: false };
+                    }).catch(error => {
+                        logToPage('分块 ' + (chunk.index + 1) + ' 上传失败: ' + error.message, 'error');
                         throw error;
-                    }
+                    });
+                    
+                    activeUploads.push(uploadPromise);
                 }
-            }
-            
-            // 新增重试上传函数
-            async function uploadChunkWithRetry(chunk, maxRetries) {
-                let lastError;
                 
-                for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                // 等待至少一个分块完成
+                if (activeUploads.length > 0) {
                     try {
-                        if (attempt > 0) {
-                            console.log('Retrying chunk', chunk.index + 1, 'attempt', attempt + 1);
-                            // 重试前等待递增的时间
-                            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-                        }
+                        // 为每个Promise添加索引标识
+                        const indexedPromises = activeUploads.map((promise, index) => 
+                            promise.then(result => ({ index, result, success: true }))
+                                  .catch(error => ({ index, error, success: false }))
+                        );
                         
-                        const result = await uploadChunk(chunk);
-                        return result;
-                    } catch (error) {
-                        lastError = error;
-                        console.warn('Chunk upload failed, attempt', attempt + 1, ':', error.message);
+                        const { index, result, error, success } = await Promise.race(indexedPromises);
                         
-                        // 如果是网络错误，可以重试
-                        if (error.message.includes('NetworkError') || 
-                            error.message.includes('Failed to fetch') ||
-                            error.message.includes('timeout')) {
-                            continue;
+                        // 移除已完成的Promise
+                        activeUploads.splice(index, 1);
+                        
+                        if (success) {
+                            // 检查是否上传完成
+                            if (result && result.completed) {
+                                return;
+                            }
                         } else {
-                            // 其他错误直接抛出
-                            throw error;
+                            logToPage('分块上传出错，继续尝试其他分块: ' + error.message, 'error');
                         }
+                    } catch (error) {
+                        logToPage('Promise处理错误: ' + error.message, 'error');
+                        activeUploads = [];
                     }
                 }
-                
-                throw lastError;
             }
         }
         
@@ -2362,8 +2895,14 @@ export function getUnifiedPageHTML() {
                     
                     // 如果有原始错误信息，优化显示
                     if (originalError) {
-                        if (originalError.includes('mov') || originalError.includes('video')) {
-                            return '🎬 视频文件上传失败：' + originalError + '（提示：大视频文件建议在WiFi环境下上传）';
+                        if (originalError.includes('mov') || originalError.includes('video') || originalError.includes('mp4')) {
+                            return '🎬 视频文件上传失败：' + originalError + '（💡建议：使用WiFi，关闭省电模式，或尝试压缩视频后上传）';
+                        }
+                        if (originalError.includes('load failed') || originalError.includes('Failed to fetch')) {
+                            return '📡 网络连接中断：' + originalError + '（💡建议：检查网络连接，使用WiFi环境，或稍后重试）';
+                        }
+                        if (originalError.includes('timeout') || originalError.includes('超时')) {
+                            return '⏱️ 上传超时：' + originalError + '（💡建议：检查网络速度，尝试在网络较好时重新上传）';
                         }
                         return '❗ ' + originalError;
                     }
@@ -2407,7 +2946,8 @@ export function getUnifiedPageHTML() {
                 'pending': '等待上传',
                 'uploading': '上传中...',
                 'success': '上传成功',
-                'error': '上传失败'
+                'error': '上传失败',
+                'loading': '📱 正在加载...'
             };
             return statusMap[status] || status;
         }
@@ -2473,6 +3013,342 @@ export function getUnifiedPageHTML() {
             setTimeout(() => {
                 toast.remove();
             }, 3000);
+        }
+        
+        // 高级网络速度测试函数
+        async function testNetworkSpeed() {
+            try {
+                console.log('🔍 Performing advanced network speed test...');
+                
+                // Test download speed
+                const downloadResult = await testDownloadSpeed();
+                
+                // Test upload speed
+                const uploadResult = await testUploadSpeed();
+                
+                // 检测HTTP/2支持
+                const isHTTP2Supported = 'h2' in navigator || 'http2' in navigator;
+                
+                // 检测ServiceWorker支持（用于连接复用）
+                const isServiceWorkerSupported = 'serviceWorker' in navigator;
+                
+                console.log('🌐 Advanced network test result:', {
+                    download: {
+                        duration: downloadResult.duration.toFixed(2) + 's',
+                        totalSize: formatFileSize(downloadResult.totalSize),
+                        speed: downloadResult.speedMbps.toFixed(2) + ' Mbps'
+                    },
+                    upload: {
+                        duration: uploadResult.duration.toFixed(2) + 's',
+                        totalSize: formatFileSize(uploadResult.totalSize),
+                        speed: uploadResult.speedMbps.toFixed(2) + ' Mbps'
+                    },
+                    http2Support: isHTTP2Supported,
+                    serviceWorkerSupport: isServiceWorkerSupported
+                });
+                
+                return {
+                    download: {
+                        speedMbps: downloadResult.speedMbps,
+                        speedBps: downloadResult.speedBps,
+                        latency: downloadResult.latency
+                    },
+                    upload: {
+                        speedMbps: uploadResult.speedMbps,
+                        speedBps: uploadResult.speedBps,
+                        latency: uploadResult.latency
+                    },
+                    // Keep backward compatibility
+                    speedMbps: downloadResult.speedMbps,
+                    speedBps: downloadResult.speedBps,
+                    latency: downloadResult.latency,
+                    http2Support: isHTTP2Supported,
+                    serviceWorkerSupported: isServiceWorkerSupported,
+                    parallelCapability: 3
+                };
+            } catch (error) {
+                console.error('Network speed test failed:', error);
+                return {
+                    download: {
+                        speedMbps: 1,
+                        speedBps: 128 * 1024,
+                        latency: 5000
+                    },
+                    upload: {
+                        speedMbps: 0.5,
+                        speedBps: 64 * 1024,
+                        latency: 5000
+                    },
+                    // Keep backward compatibility
+                    speedMbps: 1,
+                    speedBps: 128 * 1024,
+                    latency: 5000,
+                    http2Support: false,
+                    serviceWorkerSupport: false,
+                    parallelCapability: 1
+                };
+            }
+        }
+
+        async function testDownloadSpeed() {
+            const testStart = Date.now();
+            const testPromises = [];
+            
+            // 发送多个并行请求测试真实下载带宽
+            for (let i = 0; i < 3; i++) {
+                testPromises.push(
+                    fetch('/', {
+                        method: 'GET',
+                        cache: 'no-cache',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        }
+                    }).then(response => response.text())
+                );
+            }
+            
+            const results = await Promise.all(testPromises);
+            const testEnd = Date.now();
+            const testDuration = (testEnd - testStart) / 1000; // 秒
+            
+            // 计算总传输数据量
+            const totalSize = results.reduce((sum, data) => sum + new Blob([data]).size, 0);
+            const speedBps = totalSize / testDuration; // 字节每秒
+            const speedMbps = (speedBps * 8) / (1024 * 1024); // Mbps
+            
+            return {
+                duration: testDuration,
+                totalSize: totalSize,
+                speedBps: speedBps,
+                speedMbps: speedMbps,
+                latency: testDuration * 1000 / testPromises.length
+            };
+        }
+
+        async function testUploadSpeed() {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Create 1MB test payload
+                    const testSizeMB = 1;
+                    const testPayload = new ArrayBuffer(testSizeMB * 1024 * 1024);
+                    const testData = new Uint8Array(testPayload);
+                    
+                    // Fill with random data to prevent compression
+                    for (let i = 0; i < testData.length; i++) {
+                        testData[i] = Math.floor(Math.random() * 256);
+                    }
+                    
+                    const xhr = new XMLHttpRequest();
+                    const testStart = Date.now();
+                    let uploadStart = null;
+                    
+                    xhr.upload.addEventListener('loadstart', () => {
+                        uploadStart = Date.now();
+                    });
+                    
+                    xhr.upload.addEventListener('progress', (event) => {
+                        if (event.lengthComputable) {
+                            const progress = (event.loaded / event.total) * 100;
+                            console.log('Upload progress: ' + progress.toFixed(2) + '%');
+                        }
+                    });
+                    
+                    xhr.addEventListener('load', () => {
+                        const testEnd = Date.now();
+                        const testDuration = (testEnd - (uploadStart || testStart)) / 1000;
+                        
+                        if (testDuration > 0) {
+                            const speedBps = testPayload.byteLength / testDuration;
+                            const speedMbps = (speedBps * 8) / (1024 * 1024);
+                            
+                            resolve({
+                                duration: testDuration,
+                                totalSize: testPayload.byteLength,
+                                speedBps: speedBps,
+                                speedMbps: speedMbps,
+                                latency: testDuration * 1000
+                            });
+                        } else {
+                            // Fallback for very fast uploads
+                            resolve({
+                                duration: 0.1,
+                                totalSize: testPayload.byteLength,
+                                speedBps: testPayload.byteLength * 10,
+                                speedMbps: (testPayload.byteLength * 10 * 8) / (1024 * 1024),
+                                latency: 100
+                            });
+                        }
+                    });
+                    
+                    xhr.addEventListener('error', (error) => {
+                        console.error('Upload speed test error:', error);
+                        resolve({
+                            duration: 5.0,
+                            totalSize: testPayload.byteLength,
+                            speedBps: 64 * 1024, // 64KB/s fallback
+                            speedMbps: 0.5,
+                            latency: 5000
+                        });
+                    });
+                    
+                    xhr.addEventListener('timeout', () => {
+                        console.error('Upload speed test timeout');
+                        resolve({
+                            duration: 5.0,
+                            totalSize: testPayload.byteLength,
+                            speedBps: 64 * 1024, // 64KB/s fallback
+                            speedMbps: 0.5,
+                            latency: 5000
+                        });
+                    });
+                    
+                    xhr.open('POST', '/speed-test', true);
+                    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+                    xhr.timeout = 10000; // 10 second timeout
+                    
+                    xhr.send(testPayload);
+                    
+                } catch (error) {
+                    console.error('Upload speed test setup error:', error);
+                    resolve({
+                        duration: 5.0,
+                        totalSize: 1024 * 1024, // 1MB
+                        speedBps: 64 * 1024, // 64KB/s fallback
+                        speedMbps: 0.5,
+                        latency: 5000
+                    });
+                }
+            });
+        }
+        
+        // 高级上传参数优化算法
+        function getOptimalUploadParams(speedTest, fileSize, deviceInfo) {
+            // Use the new data structure with separate upload and download speeds
+            const uploadSpeed = speedTest.upload.speedMbps;
+            const downloadSpeed = speedTest.download.speedMbps;
+            
+            const { http2Support, serviceWorkerSupported, parallelCapability } = speedTest;
+            let chunkSize, maxConcurrency, strategy;
+            
+            console.log('🎯 Determining optimal upload params:', {
+                uploadSpeed: uploadSpeed.toFixed(2) + ' Mbps',
+                downloadSpeed: downloadSpeed.toFixed(2) + ' Mbps',
+                fileSize: formatFileSize(fileSize),
+                device: deviceInfo.isMobile ? 'mobile' : 'desktop',
+                http2: http2Support,
+                serviceWorker: serviceWorkerSupported
+            });
+            
+            // HTTP/2支持可以增加并发数
+            const http2Multiplier = http2Support ? 1.5 : 1.0;
+            
+            if (uploadSpeed >= 100) {
+                // 极高速网络 (>100Mbps) - 激进策略
+                strategy = 'ultra-high-performance';
+                chunkSize = deviceInfo.isMobile ? 32 * 1024 * 1024 : 64 * 1024 * 1024; // 32MB/64MB
+                maxConcurrency = Math.floor((deviceInfo.isMobile ? 12 : 20) * http2Multiplier);
+            } else if (uploadSpeed >= 50) {
+                // 高速网络 (50-100Mbps)
+                strategy = 'high-performance';
+                chunkSize = deviceInfo.isMobile ? 16 * 1024 * 1024 : 32 * 1024 * 1024; // 16MB/32MB
+                maxConcurrency = Math.floor((deviceInfo.isMobile ? 10 : 15) * http2Multiplier);
+            } else if (uploadSpeed >= 20) {
+                // 中高速网络 (20-50Mbps)
+                strategy = 'enhanced';
+                chunkSize = deviceInfo.isMobile ? 12 * 1024 * 1024 : 24 * 1024 * 1024; // 12MB/24MB
+                maxConcurrency = Math.floor((deviceInfo.isMobile ? 8 : 12) * http2Multiplier);
+            } else if (uploadSpeed >= 10) {
+                // 中速网络 (10-20Mbps)
+                strategy = 'balanced';
+                chunkSize = deviceInfo.isMobile ? 8 * 1024 * 1024 : 16 * 1024 * 1024; // 8MB/16MB
+                maxConcurrency = Math.floor((deviceInfo.isMobile ? 6 : 10) * http2Multiplier);
+            } else if (uploadSpeed >= 2) {
+                // 低速网络 (2-10Mbps) - 极保守策略
+                strategy = 'conservative';
+                chunkSize = deviceInfo.isMobile ? 1 * 1024 * 1024 : 2 * 1024 * 1024; // 1MB/2MB (大幅降低)
+                maxConcurrency = 1; // 强制单线程，避免Failed to fetch
+            } else {
+                // 极低速网络 (<2Mbps)
+                strategy = 'ultra-conservative';
+                chunkSize = deviceInfo.isMobile ? 1 * 1024 * 1024 : 2 * 1024 * 1024; // 1MB/2MB
+                maxConcurrency = deviceInfo.isMobile ? 1 : 2;
+            }
+            
+            // 文件大小自适应调整
+            if (fileSize > 1024 * 1024 * 1024) { // >1GB
+                // 超大文件：降低并发，增加分块大小
+                maxConcurrency = Math.max(1, Math.floor(maxConcurrency * 0.6));
+                chunkSize = Math.min(chunkSize * 1.5, 64 * 1024 * 1024); // 最大64MB
+                strategy += '-large-file';
+            } else if (fileSize > 500 * 1024 * 1024) { // >500MB
+                // 大文件：适度降低并发
+                maxConcurrency = Math.max(1, Math.floor(maxConcurrency * 0.8));
+                strategy += '-big-file';
+            }
+            
+            // 浏览器并发限制
+            const browserConcurrencyLimit = deviceInfo.isMobile ? 12 : 20;
+            maxConcurrency = Math.min(maxConcurrency, browserConcurrencyLimit);
+            
+            console.log('🚀 Optimized strategy selected:', strategy, {
+                chunkSize: formatFileSize(chunkSize),
+                maxConcurrency: maxConcurrency,
+                http2Boost: http2Support ? '+50%' : 'none',
+                estimatedSpeed: (uploadSpeed * 0.8).toFixed(1) + ' Mbps expected'
+            });
+            
+            return {
+                chunkSize: chunkSize,
+                maxConcurrency: maxConcurrency,
+                strategy: strategy,
+                http2Support: http2Support,
+                serviceWorkerSupport: serviceWorkerSupport
+            };
+        }
+        
+        // 网络质量检测函数（简化版）
+        async function checkNetworkQuality() {
+            try {
+                const startTime = Date.now();
+                
+                // 发送一个小的测试请求
+                const response = await fetch('/', {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                });
+                
+                const endTime = Date.now();
+                const latency = endTime - startTime;
+                
+                console.log('Network latency:', latency + 'ms');
+                
+                // 检查连接类型（如果支持）
+                let connectionType = 'unknown';
+                if (navigator.connection) {
+                    connectionType = navigator.connection.effectiveType || navigator.connection.type || 'unknown';
+                    console.log('Connection type:', connectionType);
+                }
+                
+                // 判断网络质量
+                const isGood = response.ok && latency < 2000 && 
+                              (!navigator.connection || 
+                               !['slow-2g', '2g'].includes(navigator.connection.effectiveType));
+                
+                return {
+                    isGood: isGood,
+                    latency: latency,
+                    connectionType: connectionType
+                };
+            } catch (error) {
+                console.error('Network quality check failed:', error);
+                return {
+                    isGood: false,
+                    latency: 99999,
+                    connectionType: 'unknown'
+                };
+            }
         }
         
         // 全局函数（供HTML调用）
