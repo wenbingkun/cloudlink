@@ -1184,7 +1184,109 @@ async function startUpload() {
 }
 
 async function uploadFile(fileObj) {
-    // Implementation for uploading a single file
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB
+    const file = fileObj.file;
+
+    fileObj.status = 'uploading';
+    fileObj.startTime = Date.now();
+    uploadingFiles.push(fileObj);
+    renderFileQueue();
+
+    try {
+        if (file.size < CHUNK_SIZE) {
+            await uploadSmallFile(fileObj);
+        } else {
+            await uploadLargeFile(fileObj, CHUNK_SIZE);
+        }
+    } catch (error) {
+        fileObj.status = 'error';
+        fileObj.error = error.message;
+        renderFileQueue();
+    }
+}
+
+async function uploadSmallFile(fileObj) {
+    const formData = new FormData();
+    formData.append('file', fileObj.file);
+    formData.append('password', uploadPassword);
+
+    const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Auth-Token': authManager.getCurrentToken() || ''
+        }
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+    }
+
+    const result = await response.json();
+    fileObj.status = 'success';
+    fileObj.downloadUrl = result.downloadUrl;
+    renderFileQueue();
+}
+
+async function uploadLargeFile(fileObj, chunkSize) {
+    const file = fileObj.file;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    const startResponse = await fetch('/chunked-upload/start', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': authManager.getCurrentToken() || ''
+        },
+        body: JSON.stringify({
+            fileName: file.name,
+            fileSize: file.size,
+            password: uploadPassword
+        })
+    });
+
+    if (!startResponse.ok) {
+        const errorData = await startResponse.json();
+        throw new Error(errorData.error || 'Failed to start chunked upload');
+    }
+
+    const { sessionId } = await startResponse.json();
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+
+        const chunkResponse = await fetch(`/chunked-upload/chunk/${sessionId}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Content-Range': `bytes ${start}-${end - 1}/${file.size}`,
+                    'Content-Type': 'application/octet-stream'
+                },
+                body: chunk
+            }
+        );
+
+        if (!chunkResponse.ok) {
+            const errorData = await chunkResponse.json();
+            throw new Error(errorData.error || `Chunk ${chunkIndex + 1} upload failed`);
+        }
+
+        const result = await chunkResponse.json();
+        fileObj.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+        fileObj.uploadedBytes = end;
+        fileObj.totalBytes = file.size;
+        renderFileQueue();
+
+        if (result.completed) {
+            fileObj.status = 'success';
+            fileObj.downloadUrl = result.downloadUrl;
+            renderFileQueue();
+            return;
+        }
+    }
 }
 
 // 管理界面相关函数
