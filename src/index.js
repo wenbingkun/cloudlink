@@ -85,6 +85,17 @@ export default {
         return handleAdmin(request, env, driveAPI, path, url);
       }
 
+      if (path === '/speed-test' && request.method === 'POST') {
+        // Upload speed test endpoint
+        return new Response(JSON.stringify({ 
+          success: true, 
+          timestamp: Date.now(),
+          message: 'Upload speed test completed'
+        }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+
       return new Response('页面不存在', { status: 404, headers: corsHeaders });
 
     } catch (error) {
