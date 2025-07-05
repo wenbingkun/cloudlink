@@ -65,19 +65,12 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
     }
 
     if (path === '/admin/files' && request.method === 'GET') {
-      // 支持token认证和密码认证
-      const adminPassword = url.searchParams.get('password');
-      const authToken = request.headers.get('X-Auth-Token');
-      
+      const authHeader = request.headers.get('Authorization');
       let authenticated = false;
-      
-      if (authToken) {
-        // Token认证
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const authToken = authHeader.substring(7);
         const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
         authenticated = verification.valid;
-      } else if (adminPassword) {
-        // 密码认证（兼容旧方式）
-        authenticated = adminPassword === env.ADMIN_PASSWORD;
       }
       
       if (!authenticated) {
@@ -112,12 +105,12 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
 
     if (path.startsWith('/admin/delete/') && request.method === 'DELETE') {
       const fileId = path.substring('/admin/delete/'.length);
-      const authToken = request.headers.get('X-Auth-Token');
+      const authHeader = request.headers.get('Authorization');
       
       let authenticated = false;
       
-      if (authToken) {
-        // Token认证
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const authToken = authHeader.substring(7);
         const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
         authenticated = verification.valid;
       }
