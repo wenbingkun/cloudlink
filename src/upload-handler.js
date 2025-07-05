@@ -19,24 +19,15 @@ export async function handleUpload(request, env, driveAPI, url) {
     const formData = await request.formData();
     const password = formData.get('password');
     const file = formData.get('file');
-    const authToken = request.headers.get('X-Auth-Token');
-
-    // 认证检查：支持管理员token或上传密码
+    const authHeader = request.headers.get('Authorization');
     let authenticated = false;
     
-    if (authToken) {
-      // Token认证（管理员模式）
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const authToken = authHeader.substring(7);
       const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
       authenticated = verification.valid;
     } else if (password) {
       // 密码认证（游客模式）
-      if (password === 'admin_authenticated') {
-        // 前端标识的管理员模式，需要进一步验证
-        return new Response(JSON.stringify({ error: '认证失败，请刷新页面重试' }), { 
-          status: 401, 
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
-      }
       authenticated = password === env.UPLOAD_PASSWORD;
     }
 
