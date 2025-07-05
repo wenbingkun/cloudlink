@@ -34,10 +34,41 @@ function initAuthManager() {
         tokenExpiry: 'cloudlink_token_expiry',
         sessionDuration: 24 * 60 * 60 * 1000, // 24 hours
 
-        saveAuth: function(token) {
+        generateToken: function(password) {
+            const timestamp = Date.now();
+            const randomBytes = new Uint8Array(16);
+            crypto.getRandomValues(randomBytes);
+            const randomString = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+            
+            const payload = {
+                pwdHash: this.hashPassword(password),
+                timestamp: timestamp,
+                random: randomString
+            };
+            
+            return btoa(JSON.stringify(payload));
+        },
+        
+        hashPassword: function(password) {
+            let hash = 0;
+            const salt = 'cloudlink_salt_2024';
+            const input = password + salt;
+            
+            for (let i = 0; i < input.length; i++) {
+                const char = input.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            
+            return hash.toString(36);
+        },
+
+        saveAuth: function(password) {
+            const token = this.generateToken(password);
             const expiry = Date.now() + this.sessionDuration;
             localStorage.setItem(this.tokenKey, token);
             localStorage.setItem(this.tokenExpiry, expiry.toString());
+            return token;
         },
         getCurrentToken: function() {
             return localStorage.getItem(this.tokenKey);
@@ -139,8 +170,9 @@ async function handleLogin(e) {
             body: JSON.stringify({ password })
         });
         if (!response.ok) throw new Error((await response.json()).error || '登录失败');
-        const data = await response.json();
-        authManager.saveAuth(data.token);
+        
+        // Backend now returns a success message, not a token. Frontend generates its own.
+        authManager.saveAuth(password); // Save auth with the original password
         showToast('🎉 登录成功', 'success');
         switchToAdmin();
     } catch (error) {
