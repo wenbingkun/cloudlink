@@ -9,9 +9,9 @@ const corsHeaders = {
 
 const authManager = new ServerAuthManager();
 
-const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks (增加默认大小)
+const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks (保守策略)
 const MIN_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB minimum
-const MAX_CHUNK_SIZE = 64 * 1024 * 1024; // 64MB maximum (增加最大分块)
+const MAX_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB maximum (保守策略避免HTTP 500)
 // 使用KV存储替代内存Map，实现持久化会话管理
 
 export async function handleChunkedUpload(request, env, driveAPI, path, url) {
@@ -133,7 +133,7 @@ async function handleUploadStart(request, env, driveAPI, url) {
     }
 
     return new Response(JSON.stringify({
-      sessionId,
+      sessionId: session.sessionId,
       chunkSize: optimalChunkSize,
       totalChunks: Math.ceil(fileSize / optimalChunkSize)
     }), {
