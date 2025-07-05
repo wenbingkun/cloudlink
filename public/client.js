@@ -258,14 +258,39 @@ async function uploadSmallFile(fileObj) {
         formData.append('password', uploadPassword);
     }
 
-    const response = await fetch('/upload', { method: 'POST', body: formData, headers });
-
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || '上传失败');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload');
+    for (const header in headers) {
+        xhr.setRequestHeader(header, headers[header]);
     }
-    const result = await response.json();
-    fileObj.downloadUrl = result.downloadUrl;
+
+    return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+                fileObj.progress = Math.round((event.loaded / event.total) * 100);
+                fileObj.uploadedBytes = event.loaded;
+                fileObj.uploadSpeed = event.loaded / ((Date.now() - fileObj.startTime) / 1000); // Simple speed calc
+                renderFileQueue();
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                const result = JSON.parse(xhr.responseText);
+                fileObj.downloadUrl = result.downloadUrl;
+                logToPage(`✅ 上传成功: ${fileObj.name}`);
+                resolve();
+            } else {
+                const errorData = JSON.parse(xhr.responseText);
+                reject(new Error(errorData.error || '上传失败'));
+            }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
+        xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+
+        xhr.send(formData);
+    });
 }
 
 async function uploadLargeFile(fileObj) {
@@ -292,6 +317,9 @@ async function uploadLargeFile(fileObj) {
 
     // 2. Upload chunks
     let start = fileObj.uploadedBytes;
+    let lastProgressTime = Date.now();
+    let lastUploadedBytes = fileObj.uploadedBytes;
+
     while (start < fileObj.size) {
         // Handle pause
         if (fileObj.isPaused) {
@@ -309,23 +337,45 @@ async function uploadLargeFile(fileObj) {
         const end = Math.min(start + CHUNK_SIZE, fileObj.size);
         const chunk = fileObj.file.slice(start, end);
 
-        const chunkResponse = await fetch(`/chunked-upload/chunk/${fileObj.uploadSessionId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Range': `bytes ${start}-${end - 1}/${fileObj.size}`
-            },
-            body: chunk
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `/chunked-upload/chunk/${fileObj.uploadSessionId}`);
+        xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
+
+        const chunkUploadPromise = new Promise((resolve, reject) => {
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const currentUploaded = start + event.loaded;
+                    const currentTime = Date.now();
+                    const timeDiff = (currentTime - lastProgressTime) / 1000; // in seconds
+                    const bytesDiff = currentUploaded - lastUploadedBytes;
+
+                    if (timeDiff > 0) {
+                        fileObj.uploadSpeed = bytesDiff / timeDiff;
+                    }
+                    fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
+                    fileObj.uploadedBytes = currentUploaded;
+                    renderFileQueue();
+
+                    lastProgressTime = currentTime;
+                    lastUploadedBytes = currentUploaded;
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 308) {
+                    resolve(JSON.parse(xhr.responseText));
+                } else {
+                    reject(new Error(JSON.parse(xhr.responseText).error || `分块上传失败: HTTP ${xhr.status}`));
+                }
+            });
+
+            xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
+            xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+
+            xhr.send(chunk);
         });
 
-        if (!chunkResponse.ok) {
-            const err = await chunkResponse.json();
-            throw new Error(err.error || `分块上传失败`);
-        }
-        
-        const result = await chunkResponse.json();
-        fileObj.uploadedBytes = end;
-        fileObj.progress = Math.round((end / fileObj.size) * 100);
-        renderFileQueue();
+        const result = await chunkUploadPromise;
 
         if (result.completed) {
             fileObj.downloadUrl = result.downloadUrl;
@@ -404,7 +454,12 @@ function renderFileQueue() {
                 ${fileObj.status === 'uploading' || fileObj.status === 'paused' ? `
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${fileObj.progress}%;"></div>
-                </div>` : ''}
+                </div>
+                <div class="upload-details">
+                    <span>${formatFileSize(fileObj.uploadedBytes)} / ${formatFileSize(fileObj.size)}</span>
+                    <span>${fileObj.uploadSpeed ? formatFileSize(fileObj.uploadSpeed) + '/s' : ''}</span>
+                </div>
+                ` : ''}
                 ${errorHtml}
                 ${successHtml}
             </div>
