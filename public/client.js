@@ -190,28 +190,21 @@ async function startUpload() {
     const pendingFiles = fileQueue.filter(f => f.status === 'pending');
     if (pendingFiles.length === 0) return;
 
-    // 检查认证状态
-    const isAuth = authManager.isAuthenticated();
-    const token = authManager.getCurrentToken();
-    const expiry = localStorage.getItem(authManager.tokenExpiry);
-    
-    logToPage(`认证状态检查: authenticated=${isAuth}, hasToken=${!!token}, expiry=${expiry}, now=${Date.now()}`, 'info');
-
-    // If not authenticated as admin, and no upload password cached, ask for it.
-    // If authenticated as admin, use that token for upload.
-    if (!isAuth && !uploadPassword) {
+    // 认证检查：已登录管理员可直接上传，未登录需要上传密码
+    if (!authManager.isAuthenticated() && !uploadPassword) {
         try {
-            logToPage('需要上传密码，显示密码输入框...', 'info');
             uploadPassword = await showPasswordModal();
-            logToPage(`上传密码已获取: ${uploadPassword ? '✓' : '✗'}`, 'info');
         } catch {
             showToast('上传已取消', 'info');
             return;
         }
-    } else if (isAuth) {
-        logToPage('使用管理员认证模式上传', 'info');
+    }
+    
+    // 记录认证模式（可选的调试信息）
+    if (authManager.isAuthenticated()) {
+        logToPage('使用管理员权限上传', 'info');
     } else {
-        logToPage('使用缓存的上传密码', 'info');
+        logToPage('使用上传密码上传', 'info');
     }
 
     isUploading = true;
