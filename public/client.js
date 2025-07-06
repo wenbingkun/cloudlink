@@ -812,3 +812,41 @@ function getFileType(mimeType) {
     if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return 'archive';
     return 'other';
 }
+
+// =================================================================================
+// Theme Switching Logic (iOS 26 Style)
+// =================================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const themeToggleButton = document.getElementById('theme-toggle');
+    const sunIcon = document.getElementById('theme-icon-sun');
+    const moonIcon = document.getElementById('theme-icon-moon');
+    const htmlElement = document.documentElement;
+
+    // Function to apply the theme
+    const applyTheme = (theme) => {
+        htmlElement.setAttribute('data-theme', theme);
+        if (theme === 'dark') {
+            sunIcon.style.display = 'none';
+            moonIcon.style.display = 'block';
+        } else {
+            sunIcon.style.display = 'block';
+            moonIcon.style.display = 'none';
+        }
+    };
+
+    // Check for saved theme in localStorage
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    applyTheme(savedTheme);
+
+    // Event listener for the toggle button
+    themeToggleButton.addEventListener('click', () => {
+        const currentTheme = htmlElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        
+        // Save the new theme to localStorage
+        localStorage.setItem('theme', newTheme);
+        
+        // Apply the new theme
+        applyTheme(newTheme);
+    });
+});
