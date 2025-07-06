@@ -80,8 +80,7 @@ function initEventListeners() {
 
     // Admin Controls
     document.getElementById('searchInput').addEventListener('input', handleSearch);
-    document.getElementById('typeFilter').addEventListener('change', handleFilter);
-    document.getElementById('sortBy').addEventListener('change', handleSort);
+    
     document.getElementById('refreshBtn').addEventListener('click', () => loadFiles(true));
     document.getElementById('loadMoreBtn').addEventListener('click', () => loadFiles(false));
     document.getElementById('selectAllBtn').addEventListener('click', selectAll);
