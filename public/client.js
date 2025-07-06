@@ -305,17 +305,23 @@ async function uploadLargeFile(fileObj) {
     
     // 1. Start session
     if (!fileObj.uploadSessionId) {
+        const headers = { 'Content-Type': 'application/json' };
+        const body = {
+            fileName: fileObj.name,
+            fileSize: fileObj.size
+        };
+        
+        // 根据认证状态选择认证方式
+        if (authManager.isAuthenticated()) {
+            headers['Authorization'] = `Bearer ${authManager.getCurrentToken()}`;
+        } else {
+            body.password = uploadPassword;
+        }
+        
         const startResponse = await fetch('/chunked-upload/start', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authManager.getCurrentToken()}`
-            },
-            body: JSON.stringify({
-                fileName: fileObj.name,
-                fileSize: fileObj.size,
-                password: uploadPassword
-            })
+            headers: headers,
+            body: JSON.stringify(body)
         });
         if (!startResponse.ok) throw new Error('无法启动分块上传会话');
         const session = await startResponse.json();

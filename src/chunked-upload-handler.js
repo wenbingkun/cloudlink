@@ -41,13 +41,14 @@ async function handleUploadStart(request, env, driveAPI, url) {
   try {
     const data = await request.json();
     const { fileName, fileSize, password, chunkSize: requestedChunkSize } = data;
-    const authToken = request.headers.get('X-Auth-Token');
+    const authHeader = request.headers.get('Authorization');
 
     // 认证检查：支持管理员token或上传密码
     let authenticated = false;
     
-    if (authToken) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
       // Token认证（管理员模式）
+      const authToken = authHeader.substring(7);
       const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
       authenticated = verification.valid;
     } else if (password) {
