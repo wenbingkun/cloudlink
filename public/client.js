@@ -7,7 +7,6 @@ let authManager = null;
 let fileQueue = [];
 let isUploading = false;
 let uploadPassword = null; // Cache upload password for the session
-let debugLogVisible = false;
 let nextPageToken = null; // For admin file pagination
 let allFiles = []; // For admin file list
 let filteredFiles = [];
@@ -78,7 +77,6 @@ function initEventListeners() {
     // Upload Controls
     document.getElementById('uploadBtn').addEventListener('click', startUpload);
     document.getElementById('clearBtn').addEventListener('click', clearQueue);
-    document.getElementById('debugToggle').addEventListener('click', toggleDebugLog);
 
     // Admin Controls
     document.getElementById('searchInput').addEventListener('input', handleSearch);
@@ -180,6 +178,10 @@ function addFilesToQueue(files) {
             uploadedBytes: 0,
             isPaused: false,
             error: null,
+            startTime: null,
+            endTime: null,
+            peakSpeed: 0,
+            avgSpeed: 0,
         });
     });
     renderFileQueue();
@@ -200,18 +202,9 @@ async function startUpload() {
         }
     }
     
-    // 记录认证模式（可选的调试信息）
-    if (authManager.isAuthenticated()) {
-        logToPage('使用管理员权限上传', 'info');
-    } else {
-        logToPage('使用上传密码上传', 'info');
-    }
-
     isUploading = true;
     updateUploadButton();
     const uploadSessionStartTime = Date.now();
-
-    logToPage(`开始上传 ${pendingFiles.length} 个文件...`, 'info');
 
     // 控制并发上传数量防止HTTP 500错误
     const uploadPromises = [];
@@ -239,6 +232,7 @@ async function startUpload() {
 async function uploadFile(fileObj) {
     fileObj.status = 'uploading';
     fileObj.isPaused = false;
+    fileObj.startTime = Date.now();
     renderFileQueue();
 
     try {
@@ -248,6 +242,11 @@ async function uploadFile(fileObj) {
             await uploadLargeFile(fileObj);
         }
         fileObj.status = 'success';
+        fileObj.endTime = Date.now();
+        
+        // 计算统计信息
+        const totalTime = (fileObj.endTime - fileObj.startTime) / 1000; // 秒
+        fileObj.avgSpeed = totalTime > 0 ? fileObj.size / totalTime : 0;
     } catch (error) {
         // Don't set to error if it was a user-initiated pause
         if (!fileObj.isPaused) {
@@ -260,7 +259,6 @@ async function uploadFile(fileObj) {
 }
 
 async function uploadSmallFile(fileObj) {
-    logToPage(`小文件直传: ${fileObj.name}`);
     fileObj.startTime = Date.now(); // 初始化开始时间
     
     const formData = new FormData();
@@ -269,10 +267,8 @@ async function uploadSmallFile(fileObj) {
     const headers = {};
     if (authManager.isAuthenticated()) {
         headers['Authorization'] = `Bearer ${authManager.getCurrentToken()}`;
-        logToPage(`使用管理员token上传: ${fileObj.name}`, 'info');
     } else {
         formData.append('password', uploadPassword);
-        logToPage(`使用上传密码上传: ${fileObj.name}`, 'info');
     }
 
     const xhr = new XMLHttpRequest();
@@ -288,6 +284,12 @@ async function uploadSmallFile(fileObj) {
                 fileObj.uploadedBytes = event.loaded;
                 const elapsed = (Date.now() - fileObj.startTime) / 1000;
                 fileObj.uploadSpeed = elapsed > 0 ? event.loaded / elapsed : 0;
+                
+                // 记录峰值速度
+                if (fileObj.uploadSpeed > fileObj.peakSpeed) {
+                    fileObj.peakSpeed = fileObj.uploadSpeed;
+                }
+                
                 renderFileQueue();
             }
         });
@@ -296,7 +298,6 @@ async function uploadSmallFile(fileObj) {
             if (xhr.status >= 200 && xhr.status < 300) {
                 const result = JSON.parse(xhr.responseText);
                 fileObj.downloadUrl = result.downloadUrl;
-                logToPage(`✅ 上传成功: ${fileObj.name}`);
                 resolve();
             } else {
                 const errorData = JSON.parse(xhr.responseText);
@@ -312,7 +313,6 @@ async function uploadSmallFile(fileObj) {
 }
 
 async function uploadLargeFile(fileObj) {
-    logToPage(`大文件分块上传: ${fileObj.name}`);
     
     // 1. Start session
     if (!fileObj.uploadSessionId) {
@@ -349,7 +349,6 @@ async function uploadLargeFile(fileObj) {
         if (fileObj.isPaused) {
             fileObj.status = 'paused';
             renderFileQueue();
-            logToPage(`⏸️ 已暂停: ${fileObj.name}`, 'warn');
             // This promise will resolve when user clicks resume
             await new Promise(resolve => {
                 fileObj.resumeHandler = resolve;
@@ -375,6 +374,10 @@ async function uploadLargeFile(fileObj) {
 
                     if (timeDiff > 0) {
                         fileObj.uploadSpeed = bytesDiff / timeDiff;
+                        // 记录峰值速度
+                        if (fileObj.uploadSpeed > fileObj.peakSpeed) {
+                            fileObj.peakSpeed = fileObj.uploadSpeed;
+                        }
                     }
                     fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
                     fileObj.uploadedBytes = currentUploaded;
@@ -414,7 +417,6 @@ async function uploadLargeFile(fileObj) {
                 
                 // 指数退避延迟
                 const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount - 1);
-                logToPage(`分块上传失败，${delay}ms后重试 (${retryCount}/${MAX_RETRIES})...`, 'warn');
                 await new Promise(resolve => setTimeout(resolve, delay));
                 
                 // 重新创建 xhr 请求
@@ -460,7 +462,6 @@ async function uploadLargeFile(fileObj) {
 
         if (result.completed) {
             fileObj.downloadUrl = result.downloadUrl;
-            logToPage(`✅ 上传成功: ${fileObj.name}`);
             return; // Exit loop
         }
         start = end;
@@ -474,7 +475,6 @@ function togglePause(fileId) {
     fileObj.isPaused = !fileObj.isPaused;
 
     if (!fileObj.isPaused && fileObj.resumeHandler) {
-        logToPage(`▶️ 继续上传: ${fileObj.name}`, 'info');
         fileObj.resumeHandler(); // Resolve the promise to continue the loop
         fileObj.resumeHandler = null;
     }
@@ -518,10 +518,25 @@ function renderFileQueue() {
         
         let successHtml = '';
         if (fileObj.status === 'success' && fileObj.downloadUrl) {
+            const totalTime = fileObj.endTime && fileObj.startTime ? 
+                (fileObj.endTime - fileObj.startTime) / 1000 : 0;
+            
             successHtml = `
                 <div class="success-info">
-                    <input type="text" value="${fileObj.downloadUrl}" readonly/>
-                    <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${fileObj.downloadUrl}')">复制</button>
+                    <div class="download-link-container">
+                        <div class="download-link-label">下载链接:</div>
+                        <div class="download-link-input">
+                            <input type="text" value="${fileObj.downloadUrl}" readonly style="width: 300px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;"/>
+                            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${fileObj.downloadUrl}')" style="margin-left: 5px;">复制链接</button>
+                        </div>
+                    </div>
+                    ${totalTime > 0 ? `
+                    <div class="upload-stats">
+                        <span class="stat-item">📊 总用时: ${formatTime(totalTime)}</span>
+                        <span class="stat-item">📈 平均速度: ${formatFileSize(fileObj.avgSpeed)}/s</span>
+                        <span class="stat-item">🚀 峰值速度: ${formatFileSize(fileObj.peakSpeed)}/s</span>
+                    </div>
+                    ` : ''}
                 </div>`;
         }
 
@@ -796,18 +811,4 @@ function getFileType(mimeType) {
     if (mimeType.includes('pdf') || mimeType.includes('document')) return 'document';
     if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return 'archive';
     return 'other';
-}
-function toggleDebugLog() {
-    debugLogVisible = !debugLogVisible;
-    const debugLog = document.getElementById('debugLog');
-    debugLog.style.display = debugLogVisible ? 'block' : 'none';
-    document.getElementById('debugToggle').textContent = debugLogVisible ? '隐藏调试日志' : '显示调试日志';
-}
-function logToPage(message, type = 'info') {
-    if (!debugLogVisible) return;
-    const content = document.getElementById('debugLogContent');
-    const entry = document.createElement('div');
-    entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-    content.appendChild(entry);
-    content.scrollTop = content.scrollHeight;
 }
