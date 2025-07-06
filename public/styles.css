@@ -1,45 +1,56 @@
 /* =========================================================================
-   CloudLink :: Zen UI Theme
+   CloudLink :: Anthropic Docs Inspired UI Theme
    ========================================================================= */
 
 /* --- 1. CSS Variables & Theme Setup --- */
 :root {
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 
-    /* Light Theme */
-    --bg-color: #f5f5f7;
-    --content-bg-color: #ffffff;
-    --border-color: #d1d1d6;
-    --text-primary: #1d1d1f;
-    --text-secondary: #6e6e73;
-    --text-tertiary: #86868b;
-    --accent-primary: #007aff;
-    --accent-primary-hover: #0071e3;
-    --accent-secondary-bg: #f5f5f7;
-    --btn-secondary-bg: #e8e8ea;
+    /* Anthropic-inspired Light Theme */
+    --bg-color: #ffffff;
+    --content-bg-color: #fafafa;
+    --border-color: #e5e5e5;
+    --text-primary: #0e0e0e;
+    --text-secondary: #525252;
+    --text-tertiary: #737373;
+    --accent-primary: #d4a27f;
+    --accent-primary-hover: #c4926c;
+    --accent-secondary-bg: #f9f9f9;
+    --btn-secondary-bg: #f5f5f5;
     --btn-secondary-text: var(--text-primary);
-    --btn-secondary-border: #d1d1d6;
+    --btn-secondary-border: #e5e5e5;
+    --surface-elevated: #ffffff;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
     /* Shared Variables */
-    --radius-lg: 18px;
-    --radius-md: 12px;
-    --radius-sm: 8px;
-    --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --transition: all 0.15s ease;
+    --transition-colors: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
 html[data-theme='dark'] {
-    --bg-color: #000000;
-    --content-bg-color: #1d1d1f;
-    --border-color: #424245;
-    --text-primary: #f5f5f7;
-    --text-secondary: #86868b;
-    --text-tertiary: #6e6e73;
-    --accent-primary: #0a84ff;
-    --accent-primary-hover: #3695fa;
-    --accent-secondary-bg: #1a1a1c;
-    --btn-secondary-bg: #2c2c2e;
+    --bg-color: #0e0e0e;
+    --content-bg-color: #1a1a1a;
+    --border-color: #262626;
+    --text-primary: #fafafa;
+    --text-secondary: #a3a3a3;
+    --text-tertiary: #737373;
+    --accent-primary: #d4a27f;
+    --accent-primary-hover: #e4b28f;
+    --accent-secondary-bg: #171717;
+    --btn-secondary-bg: #262626;
     --btn-secondary-text: var(--text-primary);
-    --btn-secondary-border: #424245;
+    --btn-secondary-border: #404040;
+    --surface-elevated: #262626;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
 }
 
 /* --- 2. Global Styles & Layout --- */
@@ -53,354 +64,756 @@ body {
     font-family: var(--font-sans);
     background-color: var(--bg-color);
     color: var(--text-primary);
+    line-height: 1.6;
     min-height: 100vh;
-    transition: background-color var(--transition), color var(--transition);
+    transition: var(--transition-colors);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    display: flex;
-    justify-content: center;
-    padding: 24px;
 }
 
 .main-container {
-    width: 100%;
-    max-width: 900px;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    gap: 24px;
-}
-
-.header, .content-container {
-    width: 100%;
-    background-color: var(--content-bg-color);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    padding: 16px;
-    transition: background-color var(--transition), border-color var(--transition);
 }
 
 .header {
+    background-color: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem 1.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm);
 }
 
-.content-section { display: none; animation: fadeIn 0.5s ease; }
-.content-section.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-/* --- 3. Header Elements --- */
-.header h1 {
-    font-size: 1.25rem;
-    font-weight: 600;
+.logo {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0.75rem;
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.logo svg {
+    color: var(--accent-primary);
 }
 
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 1rem;
 }
 
 .nav-tabs {
     display: flex;
-    gap: 4px;
+    gap: 0.25rem;
     background-color: var(--accent-secondary-bg);
-    padding: 4px;
+    padding: 0.25rem;
     border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
 }
 
 .nav-tab {
-    padding: 6px 12px;
+    padding: 0.5rem 1rem;
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-weight: 500;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     cursor: pointer;
-    transition: var(--transition);
+    transition: var(--transition-colors);
     border: none;
     background: transparent;
     display: flex;
     align-items: center;
-    gap: 6px;
-}
-.nav-tab:hover { color: var(--text-primary); }
-.nav-tab.active {
-    color: var(--text-primary);
-    background-color: var(--content-bg-color);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-}
-html[data-theme='dark'] .nav-tab.active {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.12);
+    gap: 0.5rem;
 }
 
+.nav-tab:hover {
+    color: var(--text-primary);
+}
+
+.nav-tab.active {
+    color: var(--text-primary);
+    background-color: var(--surface-elevated);
+    box-shadow: var(--shadow-sm);
+}
 
 .theme-toggle-btn {
     background: transparent;
-    border: none;
+    border: 1px solid var(--border-color);
     color: var(--text-secondary);
     cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: var(--transition);
+    transition: var(--transition-colors);
 }
+
 .theme-toggle-btn:hover {
     color: var(--text-primary);
     background-color: var(--accent-secondary-bg);
 }
 
+.main-content {
+    flex: 1;
+    padding: 2rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.content-section {
+    display: none;
+    animation: fadeIn 0.2s ease;
+}
+
+.content-section.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- 3. Typography & Headings --- */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-primary);
+}
+
+h2 {
+    font-size: 1.875rem;
+    margin-bottom: 0.5rem;
+}
+
+h3 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.subtitle {
+    color: var(--text-tertiary);
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+}
+
 /* --- 4. Buttons & Controls --- */
 .btn {
-    padding: 10px 20px;
+    padding: 0.75rem 1.5rem;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    transition: var(--transition);
+    transition: var(--transition-colors);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0.5rem;
+    text-decoration: none;
+    font-family: inherit;
 }
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
 .btn-primary {
     background: var(--accent-primary);
     color: white;
+    border-color: var(--accent-primary);
 }
+
 .btn-primary:not(:disabled):hover {
     background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
 }
+
 .btn-secondary {
     background: var(--btn-secondary-bg);
     color: var(--btn-secondary-text);
     border-color: var(--btn-secondary-border);
 }
+
 .btn-secondary:not(:disabled):hover {
-    filter: brightness(0.95);
-}
-html[data-theme='dark'] .btn-secondary:not(:disabled):hover {
-    filter: brightness(1.1);
+    background: var(--accent-secondary-bg);
 }
 
-/* --- 5. Upload Area --- */
+/* --- 5. Cards & Containers --- */
+.card {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-colors);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* --- 6. Login Section --- */
+.login-card {
+    max-width: 400px;
+    margin: 4rem auto;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    box-shadow: var(--shadow-lg);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.login-header h2 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.login-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--content-bg-color);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: var(--transition-colors);
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(212, 162, 127, 0.1);
+}
+
+.login-form .btn {
+    width: 100%;
+}
+
+/* --- 7. Upload Section --- */
+.upload-section {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.upload-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.upload-header h2 {
+    margin-bottom: 0.5rem;
+}
+
+.upload-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 .upload-area {
     border: 2px dashed var(--border-color);
     border-radius: var(--radius-lg);
-    padding: 64px;
+    padding: 3rem;
     text-align: center;
     cursor: pointer;
-    transition: var(--transition);
+    transition: var(--transition-colors);
+    background-color: var(--content-bg-color);
+    margin-bottom: 1.5rem;
+}
+
+.upload-area:hover,
+.upload-area.dragover {
+    border-color: var(--accent-primary);
     background-color: var(--accent-secondary-bg);
 }
-.upload-area:hover, .upload-area.dragover {
-    border-color: var(--accent-primary);
-}
-.upload-icon { color: var(--accent-primary); margin-bottom: 16px; }
-.upload-text { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
-.upload-hint { font-size: 0.9rem; color: var(--text-secondary); }
-.upload-controls { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
 
-/* --- 6. File Queue & Items --- */
-.file-queue { margin-top: 24px; display: flex; flex-direction: column; gap: 12px; }
+.upload-icon {
+    color: var(--accent-primary);
+    margin-bottom: 1rem;
+}
+
+.upload-text {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.upload-hint {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.upload-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-bottom: 1.5rem;
+}
+
+/* --- 8. File Queue & Items --- */
+.file-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
 .file-item {
     display: grid;
-    grid-template-columns: 40px 1fr auto;
+    grid-template-columns: 3rem 1fr auto;
     align-items: center;
-    gap: 16px;
-    padding: 12px;
+    gap: 1rem;
+    padding: 1rem;
     border-radius: var(--radius-md);
-    background: var(--accent-secondary-bg);
+    background: var(--surface-elevated);
     border: 1px solid var(--border-color);
+    transition: var(--transition-colors);
 }
+
+.file-item:hover {
+    box-shadow: var(--shadow-sm);
+}
+
 .file-item-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-sm);
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
-    background-color: var(--content-bg-color);
+    font-size: 1.25rem;
+    background-color: var(--accent-secondary-bg);
     border: 1px solid var(--border-color);
+    color: var(--accent-primary);
 }
-.file-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-meta { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+
+.file-info {
+    min-width: 0;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-meta {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
 .progress-bar {
     width: 100%;
-    height: 6px;
+    height: 0.375rem;
     background: var(--border-color);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
-    margin-top: 8px;
+    margin-top: 0.5rem;
 }
+
 .progress-fill {
     height: 100%;
     background: var(--accent-primary);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     transition: width 0.3s ease;
 }
+
 .success-info {
-    grid-column: 2 / 4;
-    padding-top: 12px;
-    margin-top: 12px;
+    grid-column: 1 / 4;
+    padding-top: 1rem;
+    margin-top: 1rem;
     border-top: 1px solid var(--border-color);
 }
+
 .download-link-input {
     width: 100%;
     background: var(--content-bg-color);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    padding: 8px 12px;
+    padding: 0.5rem 0.75rem;
     border-radius: var(--radius-md);
-    font-family: monospace;
-    font-size: 0.85rem;
-}
-.file-error {
-    grid-column: 2 / 4;
-    color: #ff453a;
-    font-size: 0.85rem;
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: rgba(255, 59, 48, 0.1);
-    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    transition: var(--transition-colors);
 }
 
-/* --- 7. Admin View --- */
-.admin-header { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center; }
+.download-link-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.file-error {
+    grid-column: 1 / 4;
+    color: #dc2626;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(220, 38, 38, 0.1);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+/* --- 9. Admin Section --- */
+.admin-section {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.admin-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.admin-header h2 {
+    margin-bottom: 0.5rem;
+}
+
+.admin-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.admin-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    align-items: center;
+}
+
+.search-container {
+    flex: 1;
+}
+
 .search-input {
-    padding: 10px 16px;
+    width: 100%;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    background: var(--accent-secondary-bg);
+    background: var(--content-bg-color);
     color: var(--text-primary);
-    font-size: 0.9rem;
-    flex-grow: 1;
+    font-size: 0.875rem;
+    transition: var(--transition-colors);
 }
+
 .search-input:focus {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.3);
     outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(212, 162, 127, 0.1);
 }
+
 .files-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 1rem;
 }
+
 .file-card {
     display: grid;
-    grid-template-columns: 40px 1fr auto auto;
+    grid-template-columns: 3rem 1fr auto auto;
     align-items: center;
-    gap: 16px;
-    padding: 12px;
+    gap: 1rem;
+    padding: 1rem;
     border-radius: var(--radius-md);
-    border: 1px solid transparent;
-    transition: var(--transition);
+    border: 1px solid var(--border-color);
+    background: var(--surface-elevated);
+    transition: var(--transition-colors);
 }
-.file-card:hover, .file-card.selected {
-    background-color: var(--accent-secondary-bg);
-    border-color: var(--border-color);
-}
-.file-card-name { font-weight: 500; }
-.file-card-info { font-size: 0.9rem; color: var(--text-secondary); }
-.file-card-actions { display: flex; gap: 8px; }
-.file-card-actions .btn { padding: 6px 12px; font-size: 0.8rem; }
 
-/* --- 8. Modals & Toasts --- */
+.file-card:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.file-card-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.file-card-info {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.file-card-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.file-card-actions .btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* --- 10. Modals --- */
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: 1rem;
 }
+
 .modal-content {
-    background: var(--content-bg-color);
-    border-radius: var(--radius-lg);
-    padding: 24px;
+    background: var(--surface-elevated);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
     border: 1px solid var(--border-color);
-    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-lg);
     max-width: 420px;
     width: 100%;
     text-align: center;
 }
-.modal-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
-.modal-description { color: var(--text-secondary); margin-bottom: 24px; }
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.modal-description {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
 .modal-input {
     width: 100%;
-    padding: 12px 16px;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    background: var(--accent-secondary-bg);
+    background: var(--content-bg-color);
     color: var(--text-primary);
     font-size: 1rem;
+    margin-bottom: 1.5rem;
+    transition: var(--transition-colors);
 }
-.modal-actions { display: flex; gap: 12px; justify-content: stretch; margin-top: 24px; }
-.modal-actions .btn { flex-grow: 1; }
 
+.modal-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(212, 162, 127, 0.1);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: stretch;
+}
+
+.modal-actions .btn {
+    flex: 1;
+}
+
+/* --- 11. Toast Notifications --- */
 #toast-container {
     position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 1.5rem;
+    right: 1.5rem;
     z-index: 2000;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    align-items: center;
+    gap: 0.5rem;
+    max-width: 400px;
 }
+
 .toast {
-    padding: 12px 20px;
+    padding: 1rem 1.5rem;
     border-radius: var(--radius-md);
     color: white;
     font-weight: 500;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    animation: toast-in 0.5s, toast-out 0.5s 3.5s forwards;
+    box-shadow: var(--shadow-lg);
+    animation: toast-in 0.3s ease, toast-out 0.3s ease 3.5s forwards;
     display: flex;
     align-items: center;
-    gap: 10px;
-}
-.toast.success { background: #34c759; }
-.toast.error { background: #ff3b30; }
-.toast.info { background: #007aff; }
-
-@keyframes toast-in { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes toast-out { from { opacity: 1; } to { opacity: 0; } }
-
-/* --- 9. Login & Other Sections --- */
-.login-container { max-width: 400px; margin: 48px auto; text-align: center; }
-.login-container h2 { font-size: 1.75rem; font-weight: 600; margin-bottom: 24px; }
-.form-group { margin-bottom: 16px; }
-.form-group input { width: 100%; padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--accent-secondary-bg); color: var(--text-primary); font-size: 1rem; }
-.login-form .btn { width: 100%; }
-.admin-stats, .batch-actions { display: none; } /* Hiding for now to simplify UI */
-
-/* --- 10. Responsive --- */
-@media (max-width: 640px) {
-    body { padding: 16px; }
-    .header { flex-direction: column; gap: 12px; }
-    .upload-area { padding: 32px; }
-    .upload-text { font-size: 1rem; }
-    .upload-hint { font-size: 0.8rem; }
-    .file-card { grid-template-columns: 1fr; text-align: center; }
-    .file-card-info, .file-card-actions { justify-content: center; }
+    gap: 0.75rem;
 }
 
-/* --- 11. Utility --- */
-.hidden { display: none !important; }
-.animate-spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.toast.success {
+    background: #16a34a;
+}
+
+.toast.error {
+    background: #dc2626;
+}
+
+.toast.info {
+    background: var(--accent-primary);
+}
+
+@keyframes toast-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* --- 12. Utility Classes --- */
+.hidden {
+    display: none !important;
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --- 13. Responsive Design --- */
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+    
+    .nav-tabs {
+        order: -1;
+    }
+    
+    .main-content {
+        padding: 1rem;
+    }
+    
+    .upload-area {
+        padding: 2rem 1rem;
+    }
+    
+    .upload-text {
+        font-size: 1rem;
+    }
+    
+    .upload-hint {
+        font-size: 0.8rem;
+    }
+    
+    .file-item {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .file-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .file-card-actions {
+        justify-content: center;
+    }
+    
+    .admin-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .upload-controls {
+        flex-direction: column;
+    }
+    
+    .modal-content {
+        margin: 1rem;
+    }
+    
+    .modal-actions {
+        flex-direction: column;
+    }
+    
+    #toast-container {
+        bottom: 1rem;
+        right: 1rem;
+        left: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .header {
+        padding: 0.75rem;
+    }
+    
+    .logo h1 {
+        font-size: 1.25rem;
+    }
+    
+    .nav-tab {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+    }
+    
+    .main-content {
+        padding: 0.75rem;
+    }
+    
+    .login-card {
+        padding: 1.5rem;
+        margin: 2rem auto;
+    }
+    
+    .upload-area {
+        padding: 1.5rem 1rem;
+    }
+}
