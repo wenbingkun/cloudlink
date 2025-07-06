@@ -9,9 +9,9 @@ const corsHeaders = {
 
 const authManager = new ServerAuthManager();
 
-const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks (保守策略)
+const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks (保守策略)
 const MIN_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB minimum
-const MAX_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB maximum (保守策略避免HTTP 500)
+const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB maximum (保守策略避免HTTP 500)
 // 使用KV存储替代内存Map，实现持久化会话管理
 
 export async function handleChunkedUpload(request, env, driveAPI, path, url) {
@@ -125,11 +125,11 @@ async function handleUploadStart(request, env, driveAPI, url) {
     // 确保分块大小在合理范围内
     optimalChunkSize = Math.max(MIN_CHUNK_SIZE, Math.min(MAX_CHUNK_SIZE, optimalChunkSize));
     
-    // 根据文件大小调整分块大小
+    // 根据文件大小调整分块大小（保守策略）
     if (fileSize < 50 * 1024 * 1024) { // 小于50MB
-      optimalChunkSize = Math.min(optimalChunkSize, 2 * 1024 * 1024); // 最大2MB
+      optimalChunkSize = Math.min(optimalChunkSize, 1 * 1024 * 1024); // 最大1MB
     } else if (fileSize > 500 * 1024 * 1024) { // 大于500MB
-      optimalChunkSize = Math.max(optimalChunkSize, 8 * 1024 * 1024); // 最小8MB
+      optimalChunkSize = Math.min(optimalChunkSize, 2 * 1024 * 1024); // 最大2MB
     }
 
     return new Response(JSON.stringify({
@@ -153,6 +153,7 @@ async function handleUploadStart(request, env, driveAPI, url) {
 
 async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
   const startTime = Date.now();
+  let chunkData = null;
   try {
     const contentRange = request.headers.get('Content-Range');
     const contentLength = request.headers.get('Content-Length');
@@ -205,17 +206,29 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
     const total = parseInt(rangeMatch[3]);
 
     console.log('Chunk details:', { start, end, total, sessionId });
-    const chunkData = await request.arrayBuffer();
+    chunkData = await request.arrayBuffer();
     console.log('Chunk data size:', chunkData.byteLength);
 
-    // 上传块到 Google Drive
+    // 验证分块大小
+    if (chunkData.byteLength > MAX_CHUNK_SIZE) {
+      throw new Error(`分块大小超过限制: ${chunkData.byteLength} > ${MAX_CHUNK_SIZE}`);
+    }
+
+    // 上传块到 Google Drive（添加超时保护）
     console.log('Uploading chunk to Google Drive...');
-    const result = await driveAPI.uploadChunk(
+    const uploadPromise = driveAPI.uploadChunk(
       session.uploadUrl,
       chunkData,
       start,
       total
     );
+    
+    // 30秒超时
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Google Drive上传超时')), 30000);
+    });
+    
+    const result = await Promise.race([uploadPromise, timeoutPromise]);
     console.log('Google Drive upload result:', result);
 
     // 更新会话状态
@@ -266,14 +279,30 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url) {
       timestamp: new Date().toISOString()
     });
     
+    // 根据错误类型返回不同的HTTP状态码
+    let statusCode = 500;
+    if (error.message.includes('超时')) {
+      statusCode = 408; // Request Timeout
+    } else if (error.message.includes('大小超过限制')) {
+      statusCode = 413; // Payload Too Large
+    } else if (error.message.includes('认证')) {
+      statusCode = 401; // Unauthorized
+    }
+    
     return new Response(JSON.stringify({ 
       error: '分块上传失败：' + error.message,
       sessionId,
-      processingTime
+      processingTime,
+      retryable: statusCode === 408 || statusCode === 500 // 只有超时和服务器错误可重试
     }), {
-      status: 500,
+      status: statusCode,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
+  } finally {
+    // 清理内存
+    if (chunkData) {
+      chunkData = null;
+    }
   }
 }
 

@@ -15,7 +15,10 @@ let selectedFiles = new Set();
 
 // --- Constants ---
 const CHUNK_UPLOAD_THRESHOLD = 50 * 1024 * 1024; // 50MB
-const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB - 保守策略防止HTTP 500
+const MAX_CONCURRENT_UPLOADS = 2; // 最大并发上传数
+const MAX_RETRIES = 3; // 最大重试次数
+const RETRY_DELAY_BASE = 1000; // 重试基础延迟（毫秒）
 
 // =================================================================================
 // Initialization
@@ -204,11 +207,13 @@ async function startUpload() {
 
     logToPage(`开始上传 ${pendingFiles.length} 个文件...`, 'info');
 
-    // Create a queue of promises
-    const uploadPromises = pendingFiles.map(fileObj => uploadFile(fileObj));
-    
-    // Wait for all uploads in the current batch to complete
-    await Promise.all(uploadPromises);
+    // 控制并发上传数量防止HTTP 500错误
+    const uploadPromises = [];
+    for (let i = 0; i < pendingFiles.length; i += MAX_CONCURRENT_UPLOADS) {
+        const batch = pendingFiles.slice(i, i + MAX_CONCURRENT_UPLOADS);
+        const batchPromises = batch.map(fileObj => uploadFile(fileObj));
+        await Promise.all(batchPromises);
+    }
 
     isUploading = false;
     updateUploadButton();
@@ -377,7 +382,64 @@ async function uploadLargeFile(fileObj) {
             xhr.send(chunk);
         });
 
-        const result = await chunkUploadPromise;
+        let result;
+        let retryCount = 0;
+        
+        while (retryCount <= MAX_RETRIES) {
+            try {
+                result = await chunkUploadPromise;
+                break; // 成功则退出重试循环
+            } catch (error) {
+                retryCount++;
+                if (retryCount > MAX_RETRIES) {
+                    throw error; // 超过最大重试次数，抛出错误
+                }
+                
+                // 指数退避延迟
+                const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount - 1);
+                logToPage(`分块上传失败，${delay}ms后重试 (${retryCount}/${MAX_RETRIES})...`, 'warn');
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                // 重新创建 xhr 请求
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', `/chunked-upload/chunk/${fileObj.uploadSessionId}`);
+                xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
+                
+                const chunkUploadPromise = new Promise((resolve, reject) => {
+                    xhr.upload.addEventListener('progress', (event) => {
+                        if (event.lengthComputable) {
+                            const currentUploaded = start + event.loaded;
+                            const currentTime = Date.now();
+                            const timeDiff = (currentTime - lastProgressTime) / 1000;
+                            const bytesDiff = currentUploaded - lastUploadedBytes;
+
+                            if (timeDiff > 0) {
+                                fileObj.uploadSpeed = bytesDiff / timeDiff;
+                            }
+                            fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
+                            fileObj.uploadedBytes = currentUploaded;
+                            renderFileQueue();
+
+                            lastProgressTime = currentTime;
+                            lastUploadedBytes = currentUploaded;
+                        }
+                    });
+
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 308) {
+                            resolve(JSON.parse(xhr.responseText));
+                        } else {
+                            reject(new Error(JSON.parse(xhr.responseText).error || `分块上传失败: HTTP ${xhr.status}`));
+                        }
+                    });
+
+                    xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
+                    xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+
+                    xhr.send(chunk);
+                });
+            }
+        }
 
         if (result.completed) {
             fileObj.downloadUrl = result.downloadUrl;
