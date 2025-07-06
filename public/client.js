@@ -187,7 +187,9 @@ async function startUpload() {
     const pendingFiles = fileQueue.filter(f => f.status === 'pending');
     if (pendingFiles.length === 0) return;
 
-    if (!uploadPassword && !authManager.isAuthenticated()) {
+    // If not authenticated as admin, and no upload password cached, ask for it.
+    // If authenticated as admin, use that token for upload.
+    if (!authManager.isAuthenticated() && !uploadPassword) {
         try {
             uploadPassword = await showPasswordModal();
         } catch {
