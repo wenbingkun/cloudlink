@@ -63,35 +63,83 @@ function initEventListeners() {
     });
 
     // Login
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
 
     // Upload Area
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
-    uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('dragover', handleDragOver);
-    uploadArea.addEventListener('dragleave', handleDragLeave);
-    uploadArea.addEventListener('drop', handleDrop);
-    fileInput.addEventListener('change', handleFileSelect);
+    
+    if (uploadArea) {
+        if (fileInput) {
+            uploadArea.addEventListener('click', () => fileInput.click());
+        }
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleDrop);
+    }
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', handleFileSelect);
+    }
 
     // Upload Controls
-    document.getElementById('uploadBtn').addEventListener('click', startUpload);
-    document.getElementById('clearBtn').addEventListener('click', clearQueue);
+    const uploadBtn = document.getElementById('uploadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', startUpload);
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearQueue);
+    }
 
     // Admin Controls
-    document.getElementById('searchInput').addEventListener('input', handleSearch);
+    const searchInput = document.getElementById('searchInput');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
     
-    document.getElementById('refreshBtn').addEventListener('click', () => loadFiles(true));
-    document.getElementById('loadMoreBtn').addEventListener('click', () => loadFiles(false));
-    document.getElementById('selectAllBtn').addEventListener('click', selectAll);
-    document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
-    document.getElementById('deleteSelectedBtn').addEventListener('click', deleteSelected);
+    if (searchInput) {
+        searchInput.addEventListener('input', handleSearch);
+    }
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => loadFiles(true));
+    }
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => loadFiles(false));
+    }
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', selectAll);
+    }
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener('click', deselectAll);
+    }
+    if (deleteSelectedBtn) {
+        deleteSelectedBtn.addEventListener('click', deleteSelected);
+    }
 
     // Modals
-    document.getElementById('modalCancelBtn').addEventListener('click', hidePasswordModal);
-    document.getElementById('modalConfirmBtn').addEventListener('click', confirmPassword);
-    document.getElementById('confirmCancelBtn').addEventListener('click', hideConfirmModal);
-    document.getElementById('confirmOkBtn').addEventListener('click', confirmAction);
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+    const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+    const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+    const confirmOkBtn = document.getElementById('confirmOkBtn');
+    
+    if (modalCancelBtn) {
+        modalCancelBtn.addEventListener('click', hidePasswordModal);
+    }
+    if (modalConfirmBtn) {
+        modalConfirmBtn.addEventListener('click', confirmPassword);
+    }
+    if (confirmCancelBtn) {
+        confirmCancelBtn.addEventListener('click', hideConfirmModal);
+    }
+    if (confirmOkBtn) {
+        confirmOkBtn.addEventListener('click', confirmAction);
+    }
 }
 
 function checkAuthStatus() {
@@ -132,7 +180,9 @@ function switchToAdmin() {
 
 async function handleLogin(e) {
     e.preventDefault();
-    const password = document.getElementById('adminPassword').value;
+    const adminPasswordInput = document.getElementById('adminPassword');
+    if (!adminPasswordInput) return;
+    const password = adminPasswordInput.value;
     try {
         const response = await fetch('/admin/login', {
             method: 'POST',
@@ -620,9 +670,13 @@ async function loadFiles(reset = false) {
 function updateFileList() { handleFilter(); }
 function handleSearch(e) { handleFilter(); }
 function handleFilter() {
-    const type = document.getElementById('typeFilter').value;
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const typeFilter = document.getElementById('typeFilter');
+    const searchInput = document.getElementById('searchInput');
+    
+    const type = typeFilter ? typeFilter.value : '';
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
     let tempFiles = allFiles;
+    
     if (type) {
         tempFiles = tempFiles.filter(file => getFileType(file.mimeType) === type);
     }
@@ -633,7 +687,9 @@ function handleFilter() {
     handleSort();
 }
 function handleSort() {
-    const sortBy = document.getElementById('sortBy').value;
+    const sortByElement = document.getElementById('sortBy');
+    const sortBy = sortByElement ? sortByElement.value : 'time';
+    
     filteredFiles.sort((a, b) => {
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'size') return b.size - a.size;
@@ -802,6 +858,8 @@ function showPasswordModal() {
     return new Promise((resolve, reject) => {
         const modal = document.getElementById('passwordModal');
         const input = document.getElementById('modalPasswordInput');
+        if (!modal || !input) return;
+        
         input.value = '';
         
         const enterListener = (e) => {
@@ -820,7 +878,10 @@ function showPasswordModal() {
     });
 }
 function hidePasswordModal() {
-    document.getElementById('passwordModal').style.display = 'none';
+    const modal = document.getElementById('passwordModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
     if (window.passwordModalReject) {
         window.passwordModalReject();
     }
@@ -828,7 +889,9 @@ function hidePasswordModal() {
     window.passwordModalReject = null;
 }
 function confirmPassword() {
-    const password = document.getElementById('modalPasswordInput').value;
+    const modalPasswordInput = document.getElementById('modalPasswordInput');
+    if (!modalPasswordInput) return;
+    const password = modalPasswordInput.value;
     if (password && window.passwordModalResolve) {
         window.passwordModalResolve(password);
     } else if (!password) {
@@ -839,13 +902,18 @@ function confirmPassword() {
 function showConfirmModal(message) {
     return new Promise((resolve) => {
         const modal = document.getElementById('confirmModal');
-        document.getElementById('confirmMessage').textContent = message;
+        const confirmMessage = document.getElementById('confirmMessage');
+        if (!modal || !confirmMessage) return;
+        confirmMessage.textContent = message;
         modal.style.display = 'flex';
         window.confirmModalResolve = resolve;
     });
 }
 function hideConfirmModal() {
-    document.getElementById('confirmModal').style.display = 'none';
+    const modal = document.getElementById('confirmModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }
 function confirmAction() {
     if (window.confirmModalResolve) {
