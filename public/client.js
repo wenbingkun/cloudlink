@@ -487,89 +487,126 @@ function togglePause(fileId) {
 
 function renderFileQueue() {
     const container = document.getElementById('fileQueue');
-    container.innerHTML = '';
+    if (fileQueue.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
     fileQueue.forEach(fileObj => {
         const item = document.createElement('div');
         item.className = 'file-item';
         item.dataset.fileId = fileObj.id;
 
+        let statusIcon = '';
+        let statusClass = '';
         let statusText = '';
-        let statusColor = '#333';
+
         switch (fileObj.status) {
-            case 'pending': statusText = '待上传'; statusColor = '#6c757d'; break;
-            case 'uploading': statusText = `上传中... ${fileObj.progress}%`; statusColor = '#007bff'; break;
-            case 'paused': statusText = `已暂停... ${fileObj.progress}%`; statusColor = '#ffc107'; break;
-            case 'success': statusText = '✅ 上传成功'; statusColor = '#28a745'; break;
-            case 'error': statusText = `❌ 上传失败`; statusColor = '#dc3545'; break;
+            case 'pending':
+                statusClass = 'pending';
+                statusText = '等待上传';
+                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+                break;
+            case 'uploading':
+            case 'paused':
+                statusClass = 'pending';
+                statusText = fileObj.isPaused ? `已暂停 ${fileObj.progress}%` : `上传中 ${fileObj.progress}%`;
+                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
+                break;
+            case 'success':
+                statusClass = 'success';
+                statusText = '上传成功';
+                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
+                break;
+            case 'error':
+                statusClass = 'error';
+                statusText = '上传失败';
+                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+                break;
         }
 
         let actionsHtml = '';
         if (fileObj.status === 'pending') {
-            actionsHtml = `<button class="btn btn-danger btn-sm" onclick="removeFromQueue(${fileObj.id})">移除</button>`;
+            actionsHtml = `<button class="btn btn-secondary" onclick="removeFromQueue(${fileObj.id})">移除</button>`;
         } else if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
             const pauseText = fileObj.isPaused ? '继续' : '暂停';
-            actionsHtml = `<button class="btn btn-secondary btn-sm" onclick="togglePause(${fileObj.id})">${pauseText}</button>`;
+            actionsHtml = `<button class="btn btn-secondary" onclick="togglePause(${fileObj.id})">${pauseText}</button>`;
+        } else if (fileObj.status === 'success') {
+             actionsHtml = `<button class="btn btn-secondary" onclick="copyToClipboard('${fileObj.downloadUrl}')">复制链接</button>`;
+        } else if (fileObj.status === 'error') {
+            actionsHtml = `<button class="btn btn-secondary" onclick="removeFromQueue(${fileObj.id})">移除</button>`;
+        }
+
+        let detailsHtml = `
+            <div class="file-name">${fileObj.name}</div>
+            <div class="file-meta">
+                <span>${formatFileSize(fileObj.size)}</span>
+                <span class="status-text">${statusText}</span>
+            </div>
+        `;
+
+        if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
+            detailsHtml += `
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${fileObj.progress}%;"></div>
+                </div>
+            `;
+        }
+        
+        let successHtml = '';
+        if (fileObj.status === 'success' && fileObj.downloadUrl) {
+            const totalTime = fileObj.endTime && fileObj.startTime ? (fileObj.endTime - fileObj.startTime) / 1000 : 0;
+            successHtml = `
+                <div class="success-info">
+                    <div class="download-link-container">
+                        <input type="text" class="download-link-input" value="${fileObj.downloadUrl}" readonly/>
+                    </div>
+                    ${totalTime > 0 ? `
+                    <div class="upload-stats">
+                        <span class="stat-item">⏱️ ${formatTime(totalTime)}</span>
+                        <span class="stat-item">📈 ${formatFileSize(fileObj.avgSpeed)}/s</span>
+                        <span class="stat-item">🚀 ${formatFileSize(fileObj.peakSpeed)}/s</span>
+                    </div>
+                    ` : ''}
+                </div>`;
         }
 
         let errorHtml = '';
         if (fileObj.status === 'error' && fileObj.error) {
             errorHtml = `<div class="file-error">${fileObj.error}</div>`;
         }
-        
-        let successHtml = '';
-        if (fileObj.status === 'success' && fileObj.downloadUrl) {
-            const totalTime = fileObj.endTime && fileObj.startTime ? 
-                (fileObj.endTime - fileObj.startTime) / 1000 : 0;
-            
-            successHtml = `
-                <div class="success-info">
-                    <div class="download-link-container">
-                        <div class="download-link-label">下载链接:</div>
-                        <div class="download-link-input">
-                            <input type="text" value="${fileObj.downloadUrl}" readonly style="width: 300px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;"/>
-                            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${fileObj.downloadUrl}')" style="margin-left: 5px;">复制链接</button>
-                        </div>
-                    </div>
-                    ${totalTime > 0 ? `
-                    <div class="upload-stats">
-                        <span class="stat-item">📊 总用时: ${formatTime(totalTime)}</span>
-                        <span class="stat-item">📈 平均速度: ${formatFileSize(fileObj.avgSpeed)}/s</span>
-                        <span class="stat-item">🚀 峰值速度: ${formatFileSize(fileObj.peakSpeed)}/s</span>
-                    </div>
-                    ` : ''}
-                </div>`;
-        }
 
         item.innerHTML = `
-            <div class="file-info">
-                <div class="file-name">${fileObj.name}</div>
-                <div class="file-meta">
-                    <span class="file-size">${formatFileSize(fileObj.size)}</span>
-                    <span class="file-status" style="color: ${statusColor};">${statusText}</span>
-                </div>
-                ${fileObj.status === 'uploading' || fileObj.status === 'paused' ? `
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${fileObj.progress}%;"></div>
-                </div>
-                <div class="upload-details">
-                    <span>${formatFileSize(fileObj.uploadedBytes)} / ${formatFileSize(fileObj.size)}</span>
-                    <span>${fileObj.uploadSpeed ? formatFileSize(fileObj.uploadSpeed) + '/s' : ''}</span>
-                </div>
-                ` : ''}
-                ${errorHtml}
+            <div class="file-item-icon ${statusClass}">${statusIcon}</div>
+            <div class="file-item-info">
+                ${detailsHtml}
                 ${successHtml}
+                ${errorHtml}
             </div>
-            <div class="file-actions">${actionsHtml}</div>
+            <div class="file-item-actions">${actionsHtml}</div>
         `;
-        container.appendChild(item);
+        fragment.appendChild(item);
     });
+
+    container.innerHTML = '';
+    container.appendChild(fragment);
 }
 
 function updateUploadButton() {
     const uploadBtn = document.getElementById('uploadBtn');
     const pendingCount = fileQueue.filter(f => f.status === 'pending').length;
     uploadBtn.disabled = pendingCount === 0 || isUploading;
-    uploadBtn.textContent = isUploading ? '上传中...' : `开始上传 (${pendingCount})`;
+    
+    if (isUploading) {
+        uploadBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+            上传中...
+        `;
+    } else {
+        uploadBtn.innerHTML = `开始上传 (${pendingCount})`;
+    }
 }
 
 function removeFromQueue(fileId) {
@@ -579,13 +616,15 @@ function removeFromQueue(fileId) {
 }
 
 function clearQueue() {
-    fileQueue = fileQueue.filter(f => f.status === 'uploading' || f.status === 'paused');
+    const uploadingFiles = fileQueue.filter(f => f.status === 'uploading' || f.status === 'paused');
+    if (uploadingFiles.length > 0) {
+        showToast('有文件正在上传，无法清空队列', 'info');
+        return;
+    }
+    fileQueue = [];
     renderFileQueue();
     updateUploadButton();
 }
-
-// ... (Rest of the functions: admin, modals, helpers - they remain largely the same)
-// ... (I will paste the rest of the unchanged code here to ensure a complete file)
 
 function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('dragover'); }
 function handleDragLeave(e) { e.currentTarget.classList.remove('dragover'); }
@@ -593,6 +632,8 @@ function handleDragLeave(e) { e.currentTarget.classList.remove('dragover'); }
 async function loadFiles(reset = false) {
     if (reset) {
         allFiles = [];
+        filteredFiles = [];
+        selectedFiles.clear();
         nextPageToken = null;
         document.getElementById('filesGrid').innerHTML = '';
     }
@@ -641,41 +682,75 @@ function handleSort() {
     });
     renderFiles();
 }
+
+function getFileTypeIcon(mimeType) {
+    const type = getFileType(mimeType);
+    switch (type) {
+        case 'image':
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+        case 'video':
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
+        case 'audio':
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>';
+        case 'document':
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
+        case 'archive':
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="1" x2="10" y2="5"></line><line x1="14" y1="1" x2="14" y2="5"></line><path d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"></path><path d="M4 12h16"></path><path d="M10 5h4"></path><path d="M12 5v14"></path></svg>';
+        default:
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path></svg>';
+    }
+}
+
 function renderFiles() {
     const grid = document.getElementById('filesGrid');
-    grid.innerHTML = ''; // Clear and re-render all filtered files
+    const fragment = document.createDocumentFragment();
+
     filteredFiles.forEach(file => {
         const card = document.createElement('div');
         card.className = `file-card ${selectedFiles.has(file.id) ? 'selected' : ''}`;
         card.dataset.fileId = file.id;
+        card.onclick = (e) => {
+            if (e.target.type === 'checkbox' || e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+            handleFileSelectToggle(file.id);
+        };
+
         card.innerHTML = `
             <div class="file-card-header">
-                <input type="checkbox" class="file-checkbox" data-file-id="${file.id}" onchange="handleFileSelectToggle('${file.id}')" ${selectedFiles.has(file.id) ? 'checked' : ''}>
-                <div class="file-card-title">${file.name}</div>
+                <div class="file-card-icon">${getFileTypeIcon(file.mimeType)}</div>
+                <div class="file-card-name">${file.name}</div>
+                <input type="checkbox" class="file-card-checkbox" data-file-id="${file.id}" onchange="handleFileSelectToggle('${file.id}')" ${selectedFiles.has(file.id) ? 'checked' : ''}>
             </div>
             <div class="file-card-info">
                 <span>${formatFileSize(file.size)}</span>
                 <span>${new Date(file.createdTime).toLocaleDateString()}</span>
             </div>
             <div class="file-card-actions">
-                <button class="btn btn-secondary btn-xs" onclick="copyToClipboard('${window.location.origin}/d/${file.id}')">复制链接</button>
-                <button class="btn btn-danger btn-xs" onclick="deleteSingleFile('${file.id}')">删除</button>
+                <button class="btn btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制链接</button>
+                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">删除</button>
             </div>`;
-        grid.appendChild(card);
+        fragment.appendChild(card);
     });
+
+    grid.innerHTML = '';
+    grid.appendChild(fragment);
     updateAdminStats();
     updateBatchActions();
 }
+
 function handleFileSelectToggle(fileId) {
+    const checkbox = document.querySelector(`.file-card-checkbox[data-file-id='${fileId}']`);
     if (selectedFiles.has(fileId)) {
         selectedFiles.delete(fileId);
+        if (checkbox) checkbox.checked = false;
     } else {
         selectedFiles.add(fileId);
+        if (checkbox) checkbox.checked = true;
     }
     document.querySelector(`.file-card[data-file-id='${fileId}']`).classList.toggle('selected');
     updateAdminStats();
     updateBatchActions();
 }
+
 function selectAll() {
     filteredFiles.forEach(file => selectedFiles.add(file.id));
     renderFiles();
@@ -689,21 +764,26 @@ async function deleteSelected() {
     const confirmed = await showConfirmModal(`确定要删除选中的 ${selectedFiles.size} 个文件吗？`);
     if (confirmed) {
         const ids = Array.from(selectedFiles);
+        showToast(`正在删除 ${ids.length} 个文件...`, 'info');
         // In a real app, you'd have a batch delete endpoint.
         // Here we do it one by one.
+        let successCount = 0;
         for (const id of ids) {
-            await deleteFileAPI(id);
+            if (await deleteFileAPI(id)) {
+                successCount++;
+            }
         }
-        showToast(`成功删除了 ${ids.length} 个文件`, 'success');
+        showToast(`成功删除了 ${successCount} 个文件`, 'success');
         loadFiles(true); // Refresh
     }
 }
 async function deleteSingleFile(fileId) {
     const confirmed = await showConfirmModal(`确定要删除这个文件吗？`);
     if (confirmed) {
-        await deleteFileAPI(fileId);
-        showToast('文件已删除', 'success');
-        loadFiles(true); // Refresh
+        if (await deleteFileAPI(fileId)) {
+            showToast('文件已删除', 'success');
+            loadFiles(true); // Refresh
+        }
     }
 }
 async function deleteFileAPI(fileId) {
@@ -713,8 +793,10 @@ async function deleteFileAPI(fileId) {
             headers: { 'Authorization': `Bearer ${authManager.getCurrentToken()}` }
         });
         if (!response.ok) throw new Error('删除失败');
+        return true;
     } catch (error) {
         showToast(error.message, 'error');
+        return false;
     }
 }
 function updateAdminStats() {
@@ -728,7 +810,7 @@ function updateBatchActions() {
 
 // --- Helper & Utility Functions ---
 function formatFileSize(bytes) {
-    if (!bytes) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -744,30 +826,58 @@ function formatTime(seconds) {
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板', 'success'), () => showToast('复制失败', 'error'));
 }
+
 function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    
+    let icon = '';
+    switch(type) {
+        case 'success':
+            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+            break;
+        case 'error':
+            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+            break;
+        case 'info':
+            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+            break;
+    }
+
+    toast.innerHTML = `${icon}<span>${message}</span>`;
+    
+    container.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+        // Animate out
+        setTimeout(() => {
+            toast.style.animation = 'toast-out 0.5s forwards';
+            toast.addEventListener('animationend', () => toast.remove());
+        }, 3000);
+    }, 100); // Small delay to ensure animation plays
 }
+
 function showPasswordModal() {
     return new Promise((resolve, reject) => {
         const modal = document.getElementById('passwordModal');
         const input = document.getElementById('modalPasswordInput');
-        input.value = ''; // 清空输入框
+        input.value = '';
         
-        // 添加Enter键支持
-        const handleEnter = (e) => {
+        const enterListener = (e) => {
             if (e.key === 'Enter') {
                 confirmPassword();
-                input.removeEventListener('keydown', handleEnter);
+                input.removeEventListener('keydown', enterListener);
             }
         };
-        input.addEventListener('keydown', handleEnter);
-        
-        input.focus(); // 聚焦到输入框
+        input.addEventListener('keydown', enterListener);
+
         modal.style.display = 'flex';
+        input.focus();
+        
         window.passwordModalResolve = resolve;
         window.passwordModalReject = reject;
     });
@@ -776,21 +886,21 @@ function hidePasswordModal() {
     document.getElementById('passwordModal').style.display = 'none';
     if (window.passwordModalReject) {
         window.passwordModalReject();
-        window.passwordModalReject = null;
-        window.passwordModalResolve = null;
     }
+    window.passwordModalResolve = null;
+    window.passwordModalReject = null;
 }
 function confirmPassword() {
-    const password = document.getElementById('modalPasswordInput').value.trim();
+    const password = document.getElementById('modalPasswordInput').value;
     if (password && window.passwordModalResolve) {
         window.passwordModalResolve(password);
-        window.passwordModalResolve = null;
-        window.passwordModalReject = null;
+    } else if (!password) {
+        // Maybe show a small error message on the modal itself
     }
-    document.getElementById('passwordModal').style.display = 'none';
+    hidePasswordModal();
 }
 function showConfirmModal(message) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         const modal = document.getElementById('confirmModal');
         document.getElementById('confirmMessage').textContent = message;
         modal.style.display = 'flex';
@@ -801,15 +911,19 @@ function hideConfirmModal() {
     document.getElementById('confirmModal').style.display = 'none';
 }
 function confirmAction() {
-    if (window.confirmModalResolve) window.confirmModalResolve(true);
+    if (window.confirmModalResolve) {
+        window.confirmModalResolve(true);
+    }
     hideConfirmModal();
 }
 function getFileType(mimeType) {
+    if (!mimeType) return 'other';
     if (mimeType.startsWith('image/')) return 'image';
     if (mimeType.startsWith('video/')) return 'video';
     if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document')) return 'document';
-    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return 'archive';
+    if (mimeType.includes('pdf')) return 'document';
+    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z') || mimeType.includes('x-gtar') || mimeType.includes('x-tar')) return 'archive';
+    if (mimeType.startsWith('text/') || mimeType.includes('document')) return 'document';
     return 'other';
 }
 
