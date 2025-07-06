@@ -491,40 +491,19 @@ function renderFileQueue() {
         container.innerHTML = '';
         return;
     }
-
     const fragment = document.createDocumentFragment();
-
     fileQueue.forEach(fileObj => {
         const item = document.createElement('div');
         item.className = 'file-item';
         item.dataset.fileId = fileObj.id;
 
-        let statusIcon = '';
-        let statusClass = '';
         let statusText = '';
-
         switch (fileObj.status) {
-            case 'pending':
-                statusClass = 'pending';
-                statusText = '等待上传';
-                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
-                break;
-            case 'uploading':
-            case 'paused':
-                statusClass = 'pending';
-                statusText = fileObj.isPaused ? `已暂停 ${fileObj.progress}%` : `上传中 ${fileObj.progress}%`;
-                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
-                break;
-            case 'success':
-                statusClass = 'success';
-                statusText = '上传成功';
-                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
-                break;
-            case 'error':
-                statusClass = 'error';
-                statusText = '上传失败';
-                statusIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
-                break;
+            case 'pending': statusText = '等待上传'; break;
+            case 'uploading': statusText = `上传中... ${fileObj.progress}%`; break;
+            case 'paused': statusText = `已暂停 ${fileObj.progress}%`; break;
+            case 'success': statusText = '上传成功'; break;
+            case 'error': statusText = '上传失败'; break;
         }
 
         let actionsHtml = '';
@@ -534,42 +513,22 @@ function renderFileQueue() {
             const pauseText = fileObj.isPaused ? '继续' : '暂停';
             actionsHtml = `<button class="btn btn-secondary" onclick="togglePause(${fileObj.id})">${pauseText}</button>`;
         } else if (fileObj.status === 'success') {
-             actionsHtml = `<button class="btn btn-secondary" onclick="copyToClipboard('${fileObj.downloadUrl}')">复制链接</button>`;
-        } else if (fileObj.status === 'error') {
-            actionsHtml = `<button class="btn btn-secondary" onclick="removeFromQueue(${fileObj.id})">移除</button>`;
+            actionsHtml = `<button class="btn btn-secondary" onclick="copyToClipboard('${fileObj.downloadUrl}')">复制链接</button>`;
         }
 
-        let detailsHtml = `
-            <div class="file-name">${fileObj.name}</div>
-            <div class="file-meta">
-                <span>${formatFileSize(fileObj.size)}</span>
-                <span class="status-text">${statusText}</span>
-            </div>
-        `;
-
+        let progressHtml = '';
         if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-            detailsHtml += `
+            progressHtml = `
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${fileObj.progress}%;"></div>
-                </div>
-            `;
+                </div>`;
         }
         
         let successHtml = '';
         if (fileObj.status === 'success' && fileObj.downloadUrl) {
-            const totalTime = fileObj.endTime && fileObj.startTime ? (fileObj.endTime - fileObj.startTime) / 1000 : 0;
             successHtml = `
                 <div class="success-info">
-                    <div class="download-link-container">
-                        <input type="text" class="download-link-input" value="${fileObj.downloadUrl}" readonly/>
-                    </div>
-                    ${totalTime > 0 ? `
-                    <div class="upload-stats">
-                        <span class="stat-item">⏱️ ${formatTime(totalTime)}</span>
-                        <span class="stat-item">📈 ${formatFileSize(fileObj.avgSpeed)}/s</span>
-                        <span class="stat-item">🚀 ${formatFileSize(fileObj.peakSpeed)}/s</span>
-                    </div>
-                    ` : ''}
+                    <input type="text" class="download-link-input" value="${fileObj.downloadUrl}" readonly/>
                 </div>`;
         }
 
@@ -579,17 +538,21 @@ function renderFileQueue() {
         }
 
         item.innerHTML = `
-            <div class="file-item-icon ${statusClass}">${statusIcon}</div>
+            <div class="file-item-icon">${getFileTypeIcon(fileObj.file.type)}</div>
             <div class="file-item-info">
-                ${detailsHtml}
-                ${successHtml}
-                ${errorHtml}
+                <div class="file-name">${fileObj.name}</div>
+                <div class="file-meta">
+                    <span>${formatFileSize(fileObj.size)}</span>
+                    <span>${statusText}</span>
+                </div>
+                ${progressHtml}
             </div>
             <div class="file-item-actions">${actionsHtml}</div>
+            ${successHtml}
+            ${errorHtml}
         `;
         fragment.appendChild(item);
     });
-
     container.innerHTML = '';
     container.appendChild(fragment);
 }
@@ -600,12 +563,9 @@ function updateUploadButton() {
     uploadBtn.disabled = pendingCount === 0 || isUploading;
     
     if (isUploading) {
-        uploadBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-            上传中...
-        `;
+        uploadBtn.textContent = '上传中...';
     } else {
-        uploadBtn.innerHTML = `开始上传 (${pendingCount})`;
+        uploadBtn.textContent = `开始上传 (${pendingCount})`;
     }
 }
 
@@ -709,32 +669,22 @@ function renderFiles() {
         const card = document.createElement('div');
         card.className = `file-card ${selectedFiles.has(file.id) ? 'selected' : ''}`;
         card.dataset.fileId = file.id;
-        card.onclick = (e) => {
-            if (e.target.type === 'checkbox' || e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-            handleFileSelectToggle(file.id);
-        };
+        card.onclick = () => handleFileSelectToggle(file.id);
 
         card.innerHTML = `
-            <div class="file-card-header">
-                <div class="file-card-icon">${getFileTypeIcon(file.mimeType)}</div>
-                <div class="file-card-name">${file.name}</div>
-                <input type="checkbox" class="file-card-checkbox" data-file-id="${file.id}" onchange="handleFileSelectToggle('${file.id}')" ${selectedFiles.has(file.id) ? 'checked' : ''}>
-            </div>
-            <div class="file-card-info">
-                <span>${formatFileSize(file.size)}</span>
-                <span>${new Date(file.createdTime).toLocaleDateString()}</span>
-            </div>
+            <div class="file-card-icon">${getFileTypeIcon(file.mimeType)}</div>
+            <div class="file-card-name">${file.name}</div>
+            <div class="file-card-info">${formatFileSize(file.size)}</div>
             <div class="file-card-actions">
-                <button class="btn btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制链接</button>
+                <button class="btn btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制</button>
                 <button class="btn btn-danger" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">删除</button>
-            </div>`;
+            </div>
+        `;
         fragment.appendChild(card);
     });
 
     grid.innerHTML = '';
     grid.appendChild(fragment);
-    updateAdminStats();
-    updateBatchActions();
 }
 
 function handleFileSelectToggle(fileId) {
@@ -747,8 +697,6 @@ function handleFileSelectToggle(fileId) {
         if (checkbox) checkbox.checked = true;
     }
     document.querySelector(`.file-card[data-file-id='${fileId}']`).classList.toggle('selected');
-    updateAdminStats();
-    updateBatchActions();
 }
 
 function selectAll() {
@@ -765,8 +713,6 @@ async function deleteSelected() {
     if (confirmed) {
         const ids = Array.from(selectedFiles);
         showToast(`正在删除 ${ids.length} 个文件...`, 'info');
-        // In a real app, you'd have a batch delete endpoint.
-        // Here we do it one by one.
         let successCount = 0;
         for (const id of ids) {
             if (await deleteFileAPI(id)) {
@@ -798,14 +744,6 @@ async function deleteFileAPI(fileId) {
         showToast(error.message, 'error');
         return false;
     }
-}
-function updateAdminStats() {
-    document.getElementById('totalFiles').textContent = allFiles.length;
-    document.getElementById('totalSize').textContent = formatFileSize(allFiles.reduce((sum, f) => sum + Number(f.size), 0));
-    document.getElementById('selectedCount').textContent = selectedFiles.size;
-}
-function updateBatchActions() {
-    document.getElementById('batchActions').classList.toggle('hidden', selectedFiles.size === 0);
 }
 
 // --- Helper & Utility Functions ---
