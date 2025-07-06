@@ -83,25 +83,55 @@ export default {
     try {
       // Initialize GoogleDriveAPI instance on first request
       if (!driveAPI) {
-        driveAPI = new GoogleDriveAPI(
-          env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-          env.GOOGLE_PRIVATE_KEY
-        );
+        // 检查Google Drive API配置
+        if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {
+          console.warn('Google Drive API not configured. Upload/download features will not work.');
+          console.warn('Please set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY environment variables.');
+        } else {
+          driveAPI = new GoogleDriveAPI(
+            env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+            env.GOOGLE_PRIVATE_KEY
+          );
+        }
       }
 
       if (path === '/upload' && request.method === 'POST') {
+        if (!driveAPI) {
+          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法上传文件' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
         return handleUpload(request, env, driveAPI, url);
       }
 
       if (path.startsWith('/chunked-upload/')) {
+        if (!driveAPI) {
+          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法上传文件' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
         return handleChunkedUpload(request, env, driveAPI, path, url);
       }
 
       if (path.startsWith('/d/') && request.method === 'GET') {
+        if (!driveAPI) {
+          return new Response('Google Drive API未配置，无法下载文件', {
+            status: 503,
+            headers: corsHeaders
+          });
+        }
         return handleDownload(request, env, driveAPI, path);
       }
 
       if (path.startsWith('/admin')) {
+        if (!driveAPI) {
+          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法访问管理功能' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
         return handleAdmin(request, env, driveAPI, path, url);
       }
 

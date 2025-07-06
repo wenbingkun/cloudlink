@@ -64,11 +64,16 @@ export class GoogleDriveAPI {
     const data = `${encodedHeader}.${encodedPayload}`;
     
     try {
+      // 检查私钥是否配置
+      if (!this.privateKey || this.privateKey.length < 100) {
+        throw new Error('Google Drive private key not configured. Please set GOOGLE_PRIVATE_KEY environment variable.');
+      }
+      
       // 处理私钥格式 - 支持 JSON 转义和普通格式
       let privateKeyPem = this.privateKey;
       
       // 如果包含转义的换行符，先处理
-      if (privateKeyPem.includes('\\n')) {
+      if (privateKeyPem && privateKeyPem.includes('\\n')) {
         privateKeyPem = privateKeyPem.replace(/\\n/g, '\n');
       }
       
