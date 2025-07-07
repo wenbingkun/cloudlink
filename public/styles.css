@@ -451,7 +451,6 @@ body {
 }
 
 .file-item:hover {
-    transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
 
@@ -518,6 +517,14 @@ body {
     gap: var(--space-4);
     margin-bottom: var(--space-8);
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.admin-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 .search-container {
@@ -747,6 +754,107 @@ body {
 .modal-actions .btn-primary,
 .modal-actions .btn-secondary {
     flex: 1;
+}
+
+/* --- Preview Modal --- */
+.preview-modal {
+    background-color: var(--surface-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-xl);
+    max-width: 90vw;
+    max-height: 90vh;
+    width: 800px;
+    animation: modalSlideIn 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-6);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.preview-header h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.preview-content {
+    flex: 1;
+    padding: var(--space-6);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+
+.preview-content img,
+.preview-content video {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.preview-content audio {
+    width: 100%;
+    max-width: 400px;
+}
+
+.preview-content .file-info {
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.preview-actions {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    border-top: 1px solid var(--border-primary);
+    justify-content: center;
+}
+
+.file-card.selected {
+    background-color: var(--color-primary-light);
+    border-color: var(--color-primary);
+}
+
+.file-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--color-primary-light), var(--color-primary));
+    border-radius: var(--radius-lg);
+    color: var(--color-primary);
+    font-size: 1.25rem;
+    flex-shrink: 0;
 }
 
 /* --- Toast Notifications --- */
