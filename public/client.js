@@ -98,10 +98,10 @@ function initEventListeners() {
     // Admin Controls
     const searchInput = document.getElementById('searchInput');
     const refreshBtn = document.getElementById('refreshBtn');
-    const loadMoreBtn = document.getElementById('loadMoreBtn');
     const selectAllBtn = document.getElementById('selectAllBtn');
     const deselectAllBtn = document.getElementById('deselectAllBtn');
     const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
     
     if (searchInput) {
         searchInput.addEventListener('input', handleSearch);
@@ -120,6 +120,21 @@ function initEventListeners() {
     }
     if (deleteSelectedBtn) {
         deleteSelectedBtn.addEventListener('click', deleteSelected);
+    }
+
+    // Preview Modal Controls
+    const previewCloseBtn = document.getElementById('previewCloseBtn');
+    const previewDownloadBtn = document.getElementById('previewDownloadBtn');
+    const previewCopyLinkBtn = document.getElementById('previewCopyLinkBtn');
+    
+    if (previewCloseBtn) {
+        previewCloseBtn.addEventListener('click', closePreview);
+    }
+    if (previewDownloadBtn) {
+        previewDownloadBtn.addEventListener('click', downloadCurrentFile);
+    }
+    if (previewCopyLinkBtn) {
+        previewCopyLinkBtn.addEventListener('click', copyCurrentFileLink);
     }
 
     // Modals
@@ -741,11 +756,17 @@ function renderFiles() {
 
         card.innerHTML = `
             <div class="file-card-icon">${getFileTypeIcon(file.mimeType)}</div>
-            <div class="file-card-name">${file.name}</div>
-            <div class="file-card-info">${formatFileSize(file.size)}</div>
+            <div class="file-card-info">
+                <div class="file-card-name">${file.name}</div>
+                <div class="file-card-meta">
+                    <span>${formatFileSize(file.size)}</span>
+                    <span>${new Date(file.createdTime).toLocaleDateString()}</span>
+                </div>
+            </div>
             <div class="file-card-actions">
-                <button class="btn btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制</button>
-                <button class="btn btn-danger" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">删除</button>
+                <button class="btn-secondary" onclick="event.stopPropagation(); previewFile('${file.id}', '${file.name}', '${file.mimeType}')">预览</button>
+                <button class="btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制</button>
+                <button class="btn-secondary" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">删除</button>
             </div>
         `;
         fragment.appendChild(card);
@@ -753,18 +774,31 @@ function renderFiles() {
 
     grid.innerHTML = '';
     grid.appendChild(fragment);
+    
+    // 更新删除选中按钮的显示状态
+    updateSelectedActions();
 }
 
 function handleFileSelectToggle(fileId) {
-    const checkbox = document.querySelector(`.file-card-checkbox[data-file-id='${fileId}']`);
     if (selectedFiles.has(fileId)) {
         selectedFiles.delete(fileId);
-        if (checkbox) checkbox.checked = false;
     } else {
         selectedFiles.add(fileId);
-        if (checkbox) checkbox.checked = true;
     }
     document.querySelector(`.file-card[data-file-id='${fileId}']`).classList.toggle('selected');
+    updateSelectedActions();
+}
+
+function updateSelectedActions() {
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    if (deleteSelectedBtn) {
+        if (selectedFiles.size > 0) {
+            deleteSelectedBtn.style.display = 'inline-flex';
+            deleteSelectedBtn.textContent = `删除选中 (${selectedFiles.size})`;
+        } else {
+            deleteSelectedBtn.style.display = 'none';
+        }
+    }
 }
 
 function selectAll() {
@@ -833,6 +867,74 @@ function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板', 'success'), () => showToast('复制失败', 'error'));
 }
 
+// 预览功能
+let currentPreviewFile = null;
+
+function previewFile(fileId, fileName, mimeType) {
+    currentPreviewFile = { id: fileId, name: fileName, mimeType: mimeType };
+    
+    const modal = document.getElementById('previewModal');
+    const title = document.getElementById('previewTitle');
+    const content = document.getElementById('previewContent');
+    
+    title.textContent = fileName;
+    
+    const fileUrl = `/d/${fileId}`;
+    const fileType = getFileType(mimeType);
+    
+    switch (fileType) {
+        case 'image':
+            content.innerHTML = `<img src="${fileUrl}" alt="${fileName}" loading="lazy">`;
+            break;
+        case 'video':
+            content.innerHTML = `
+                <video controls preload="metadata">
+                    <source src="${fileUrl}" type="${mimeType}">
+                    您的浏览器不支持视频播放。
+                </video>`;
+            break;
+        case 'audio':
+            content.innerHTML = `
+                <audio controls preload="metadata">
+                    <source src="${fileUrl}" type="${mimeType}">
+                    您的浏览器不支持音频播放。
+                </audio>`;
+            break;
+        default:
+            content.innerHTML = `
+                <div class="file-info">
+                    <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
+                        ${getFileTypeIcon(mimeType)}
+                    </div>
+                    <h3>${fileName}</h3>
+                    <p>文件类型：${mimeType}</p>
+                    <p>此文件类型不支持预览，请下载后查看。</p>
+                </div>`;
+            break;
+    }
+    
+    modal.style.display = 'flex';
+}
+
+function closePreview() {
+    const modal = document.getElementById('previewModal');
+    modal.style.display = 'none';
+    currentPreviewFile = null;
+}
+
+function downloadCurrentFile() {
+    if (currentPreviewFile) {
+        window.open(`/d/${currentPreviewFile.id}`, '_blank');
+    }
+}
+
+function copyCurrentFileLink() {
+    if (currentPreviewFile) {
+        const link = `${window.location.origin}/d/${currentPreviewFile.id}`;
+        copyToClipboard(link);
+    }
+}
+
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -857,14 +959,17 @@ function showToast(message, type = 'info') {
     
     container.appendChild(toast);
     
-    // Animate in
+    // 自动移除Toast
     setTimeout(() => {
-        // Animate out
-        setTimeout(() => {
-            toast.style.animation = 'toast-out 0.5s forwards';
-            toast.addEventListener('animationend', () => toast.remove());
-        }, 3000);
-    }, 100); // Small delay to ensure animation plays
+        if (toast && toast.parentNode) {
+            toast.style.animation = 'toastSlideOut 0.3s ease-in forwards';
+            setTimeout(() => {
+                if (toast && toast.parentNode) {
+                    toast.remove();
+                }
+            }, 300);
+        }
+    }, 3000);
 }
 
 function showPasswordModal() {
