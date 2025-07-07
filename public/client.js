@@ -538,6 +538,7 @@ function renderFileQueue() {
     const container = document.getElementById('fileQueue');
     if (fileQueue.length === 0) {
         container.innerHTML = '';
+        updateUploadButton(); // 确保隐藏上传按钮
         return;
     }
     const fragment = document.createDocumentFragment();
@@ -607,14 +608,26 @@ function renderFileQueue() {
 }
 
 function updateUploadButton() {
+    const uploadControls = document.getElementById('uploadControls');
     const uploadBtn = document.getElementById('uploadBtn');
     const pendingCount = fileQueue.filter(f => f.status === 'pending').length;
-    uploadBtn.disabled = pendingCount === 0 || isUploading;
     
-    if (isUploading) {
-        uploadBtn.textContent = '上传中...';
+    // 显示或隐藏上传控制按钮
+    if (fileQueue.length > 0) {
+        uploadControls.style.display = 'flex';
     } else {
-        uploadBtn.textContent = `开始上传 (${pendingCount})`;
+        uploadControls.style.display = 'none';
+    }
+    
+    // 更新按钮状态和文本
+    if (uploadBtn) {
+        uploadBtn.disabled = pendingCount === 0 || isUploading;
+        
+        if (isUploading) {
+            uploadBtn.textContent = '上传中...';
+        } else {
+            uploadBtn.textContent = `开始上传 (${pendingCount})`;
+        }
     }
 }
 
