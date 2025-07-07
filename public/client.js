@@ -884,18 +884,44 @@ function previewFile(fileId, fileName, mimeType) {
     
     switch (fileType) {
         case 'image':
-            content.innerHTML = `<img src="${fileUrl}" alt="${fileName}" loading="lazy">`;
+            content.innerHTML = `<img src="${fileUrl}" alt="${fileName}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div style="display: none;" class="file-info">
+                    <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
+                        ${getFileTypeIcon(mimeType)}
+                    </div>
+                    <h3>${fileName}</h3>
+                    <p>图片加载失败，请下载后查看</p>
+                </div>`;
             break;
         case 'video':
-            content.innerHTML = `
-                <video controls preload="metadata">
-                    <source src="${fileUrl}" type="${mimeType}">
-                    您的浏览器不支持视频播放。
-                </video>`;
+            // 检查是否为可能不支持的格式
+            const isProblematicFormat = mimeType.includes('mov') || mimeType.includes('quicktime');
+            
+            if (isProblematicFormat) {
+                content.innerHTML = `
+                    <div>
+                        <video controls preload="metadata" style="max-width: 100%; max-height: 500px;" onloadstart="handleVideoLoadStart(this)" onerror="handleVideoError(this, '${fileName}', '${mimeType}')">
+                            <source src="${fileUrl}" type="${mimeType}">
+                            <source src="${fileUrl}" type="video/mp4">
+                            您的浏览器不支持视频播放。
+                        </video>
+                        <div class="format-warning" style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+                            <strong>提示：</strong>MOV格式在网页中的兼容性有限，如无法播放请下载后使用专业播放器观看。
+                        </div>
+                    </div>`;
+            } else {
+                content.innerHTML = `
+                    <video controls preload="metadata" style="max-width: 100%; max-height: 500px;" onloadstart="handleVideoLoadStart(this)" onerror="handleVideoError(this, '${fileName}', '${mimeType}')">
+                        <source src="${fileUrl}" type="${mimeType}">
+                        <source src="${fileUrl}" type="video/mp4">
+                        <source src="${fileUrl}" type="video/webm">
+                        您的浏览器不支持视频播放。
+                    </video>`;
+            }
             break;
         case 'audio':
             content.innerHTML = `
-                <audio controls preload="metadata">
+                <audio controls preload="metadata" style="width: 100%; max-width: 500px;" onerror="handleAudioError(this, '${fileName}', '${mimeType}')">
                     <source src="${fileUrl}" type="${mimeType}">
                     您的浏览器不支持音频播放。
                 </audio>`;
@@ -933,6 +959,84 @@ function copyCurrentFileLink() {
         const link = `${window.location.origin}/d/${currentPreviewFile.id}`;
         copyToClipboard(link);
     }
+}
+
+// 视频加载处理函数
+function handleVideoLoadStart(video) {
+    // 添加加载指示
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'video-loading';
+    loadingDiv.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: var(--text-secondary);
+        font-size: 14px;
+    `;
+    loadingDiv.textContent = '加载视频中...';
+    
+    video.parentNode.style.position = 'relative';
+    video.parentNode.appendChild(loadingDiv);
+    
+    video.addEventListener('loadeddata', () => {
+        if (loadingDiv && loadingDiv.parentNode) {
+            loadingDiv.remove();
+        }
+    });
+}
+
+function handleVideoError(video, fileName, mimeType) {
+    // 如果视频加载失败，显示下载提示
+    const errorContent = `
+        <div class="file-info">
+            <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
+                ${getFileTypeIcon(mimeType)}
+            </div>
+            <h3>${fileName}</h3>
+            <p>文件类型：${mimeType}</p>
+            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;">
+                <p style="color: var(--text-secondary); margin: 0;">
+                    <strong>视频预览失败</strong><br>
+                    此视频格式可能不受浏览器支持。<br>
+                    ${mimeType.includes('mov') ? 'MOV格式在某些浏览器中支持有限。' : ''}
+                    请下载后使用专业播放器观看。
+                </p>
+            </div>
+        </div>`;
+    
+    const content = document.getElementById('previewContent');
+    if (content) {
+        content.innerHTML = errorContent;
+    }
+    
+    showToast('视频格式不受支持，请下载后观看', 'info');
+}
+
+function handleAudioError(audio, fileName, mimeType) {
+    // 如果音频加载失败，显示下载提示
+    const errorContent = `
+        <div class="file-info">
+            <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
+                ${getFileTypeIcon(mimeType)}
+            </div>
+            <h3>${fileName}</h3>
+            <p>文件类型：${mimeType}</p>
+            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;">
+                <p style="color: var(--text-secondary); margin: 0;">
+                    <strong>音频预览失败</strong><br>
+                    此音频格式可能不受浏览器支持。<br>
+                    请下载后使用专业播放器播放。
+                </p>
+            </div>
+        </div>`;
+    
+    const content = document.getElementById('previewContent');
+    if (content) {
+        content.innerHTML = errorContent;
+    }
+    
+    showToast('音频格式不受支持，请下载后播放', 'info');
 }
 
 function showToast(message, type = 'info') {
