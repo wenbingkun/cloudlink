@@ -8,6 +8,7 @@ dist/
 .env.development.local
 service-account.json
 *.Zone.Identifier
+wrangler.toml
 
 # Keep .claude directory but it's optional to commit
 # .claude/
