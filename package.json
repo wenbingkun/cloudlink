@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "description": "Personal file sharing service using Cloudflare Workers and Google Drive",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "publish": "wrangler deploy"
+    "publish": "wrangler deploy",
+    "test": "node tests/run-tests.mjs"
   },
   "keywords": ["cloudflare", "workers", "file-sharing", "google-drive"],
   "author": "",

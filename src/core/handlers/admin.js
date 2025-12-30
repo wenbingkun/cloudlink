@@ -1,23 +1,25 @@
-import { ServerAuthManager } from './auth-manager.js';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
-};
+import { ServerAuthManager } from '../auth/auth-manager.js';
+import { buildCorsHeaders } from '../utils/helpers.js';
 
 const authManager = new ServerAuthManager();
 
 export async function handleAdmin(request, env, driveAPI, path, url) {
   try {
+    const corsHeaders = buildCorsHeaders(request, env);
     // 移除独立的admin页面路由，现在使用统一界面
 
     if (path === '/admin/login' && request.method === 'POST') {
       const data = await request.json();
       
       if (data.password === env.ADMIN_PASSWORD) {
+        if (!env.AUTH_TOKEN_SECRET) {
+          return new Response(JSON.stringify({ error: '缺少AUTH_TOKEN_SECRET配置' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
         // 生成新token
-        const token = authManager.generateToken(data.password);
+        const token = await authManager.generateToken(data.password, env.AUTH_TOKEN_SECRET);
         return new Response(JSON.stringify({ 
           success: true, 
           token: token,
@@ -44,7 +46,11 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
         });
       }
       
-      const verification = authManager.verifyAuthToken(data.token, env.ADMIN_PASSWORD);
+      const verification = await authManager.verifyAuthToken(
+        data.token,
+        env.ADMIN_PASSWORD,
+        env.AUTH_TOKEN_SECRET
+      );
       
       if (verification.valid) {
         return new Response(JSON.stringify({ 
@@ -69,7 +75,11 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
       let authenticated = false;
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const authToken = authHeader.substring(7);
-        const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+        const verification = await authManager.verifyAuthToken(
+          authToken,
+          env.ADMIN_PASSWORD,
+          env.AUTH_TOKEN_SECRET
+        );
         authenticated = verification.valid;
       }
       
@@ -111,7 +121,11 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
       
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const authToken = authHeader.substring(7);
-        const verification = authManager.verifyAuthToken(authToken, env.ADMIN_PASSWORD);
+        const verification = await authManager.verifyAuthToken(
+          authToken,
+          env.ADMIN_PASSWORD,
+          env.AUTH_TOKEN_SECRET
+        );
         authenticated = verification.valid;
       }
       

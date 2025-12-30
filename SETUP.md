@@ -37,6 +37,10 @@ wrangler secret put GOOGLE_SERVICE_ACCOUNT_EMAIL
 # 设置 Google Drive 私钥
 wrangler secret put GOOGLE_PRIVATE_KEY
 # 输入: -----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
+
+# 设置认证签名密钥（用于JWT签名）
+wrangler secret put AUTH_TOKEN_SECRET
+# 输入: 32+位随机字符串
 ```
 
 #### 方法二：修改 wrangler.toml
@@ -45,6 +49,7 @@ wrangler secret put GOOGLE_PRIVATE_KEY
 DRIVE_FOLDER_ID = "your-google-drive-folder-id"
 UPLOAD_PASSWORD = "your-secure-upload-password"
 ADMIN_PASSWORD = "your-secure-admin-password"
+ALLOWED_ORIGINS = "http://localhost:8787,https://files.example.com"
 ```
 
 ### 4. 本地开发
@@ -72,12 +77,22 @@ npm run deploy
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`: Google 服务账户邮箱
 - `GOOGLE_PRIVATE_KEY`: Google 服务账户私钥
 - `DRIVE_FOLDER_ID`: Google Drive 文件夹 ID
+- `AUTH_TOKEN_SECRET`: 管理员Token签名密钥（用于分享与登录）
+- `AUTH_TOKEN_SECRET`: 管理员Token签名密钥
 
 ### 可选配置
 - `UPLOAD_PASSWORD`: 上传密码（默认: CloudLink_Upload_2024!@#）
 - `ADMIN_PASSWORD`: 管理员密码（默认: CloudLink_Admin_2024!@#）
 - `MAX_FILE_SIZE`: 最大文件大小，字节（默认: 2147483648 = 2GB）
 - `ALLOWED_EXTENSIONS`: 允许的文件扩展名，逗号分隔
+- `ALLOWED_ORIGINS`: 允许的跨域来源，逗号分隔
+- `REQUIRE_SHARE_TOKEN`: 是否强制分享链接下载（默认: false）
+- `MAX_SHARE_TTL_SECONDS`: 分享链接最大有效期（默认: 604800）
+- `STORAGE_PROVIDER`: 存储提供者类型（默认: google-drive）
+- `RATE_LIMIT_WINDOW_MS`: 限流时间窗口（默认: 60000）
+- `MAX_UPLOAD_REQUESTS_PER_MIN`: 上传接口限流次数/分钟
+- `MAX_ADMIN_REQUESTS_PER_MIN`: 管理接口限流次数/分钟
+- `MAX_CHUNK_REQUESTS_PER_MIN`: 分块上传限流次数/分钟
 
 ## 性能优化配置
 
@@ -87,7 +102,7 @@ npm run deploy
 - 自动重试: 最多3次，指数退避延迟
 
 ### 自定义优化
-可以在 `client.js` 中调整以下常量：
+可以在 `public/js/client.js` 中调整以下常量，或在 `public/index.html` 设置 `window.CLOUDLINK_CONFIG` 覆盖：
 ```javascript
 const CHUNK_SIZE = 2 * 1024 * 1024; // 分块大小
 const MAX_CONCURRENT_UPLOADS = 2; // 最大并发数
@@ -127,6 +142,14 @@ const MAX_RETRIES = 3; // 最大重试次数
 使用 `wrangler tail` 查看实时日志：
 ```bash
 wrangler tail
+```
+
+## KV 存储
+
+需要创建并绑定分享链接 KV 命名空间：
+
+```bash
+wrangler kv namespace create "SHARE_LINKS"
 ```
 
 ### 性能监控

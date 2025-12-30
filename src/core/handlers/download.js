@@ -1,12 +1,13 @@
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import { buildCorsHeaders } from '../utils/helpers.js';
 
-export async function handleDownload(request, env, driveAPI, path) {
+export async function handleDownload(request, env, driveAPI, path, options = {}) {
   try {
+    const corsHeaders = buildCorsHeaders(request, env);
     const fileId = path.substring(3);
+
+    if (env.REQUIRE_SHARE_TOKEN === 'true' && !options.bypassShareCheck) {
+      return new Response('下载需要分享链接授权', { status: 403, headers: corsHeaders });
+    }
     
     if (!fileId) {
       return new Response('无效的文件ID', { status: 400, headers: corsHeaders });
@@ -20,10 +21,10 @@ export async function handleDownload(request, env, driveAPI, path) {
     
     if (rangeHeader) {
       // 处理范围请求（用于大文件分段下载）
-      return handleRangeDownload(request, driveAPI, fileId, fileInfo, rangeHeader);
+      return handleRangeDownload(request, env, driveAPI, fileId, fileInfo, rangeHeader);
     } else {
       // 普通下载
-      return handleNormalDownload(driveAPI, fileId, fileInfo);
+      return handleNormalDownload(request, env, driveAPI, fileId, fileInfo);
     }
 
   } catch (error) {
@@ -35,7 +36,8 @@ export async function handleDownload(request, env, driveAPI, path) {
   }
 }
 
-async function handleNormalDownload(driveAPI, fileId, fileInfo) {
+async function handleNormalDownload(request, env, driveAPI, fileId, fileInfo) {
+  const corsHeaders = buildCorsHeaders(request, env);
   const fileResponse = await driveAPI.downloadFile(fileId);
   
   if (fileResponse.ok) {
@@ -54,7 +56,8 @@ async function handleNormalDownload(driveAPI, fileId, fileInfo) {
   }
 }
 
-async function handleRangeDownload(request, driveAPI, fileId, fileInfo, rangeHeader) {
+async function handleRangeDownload(request, env, driveAPI, fileId, fileInfo, rangeHeader) {
+  const corsHeaders = buildCorsHeaders(request, env);
   // 解析范围请求 Range: bytes=start-end
   const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
   if (!rangeMatch) {

@@ -68,6 +68,9 @@
     --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* Responsive Grid */
+    --grid-min-width: 280px;
 }
 
 /* Dark Theme */
@@ -561,6 +564,7 @@ body {
 
 .files-grid {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--grid-min-width), 1fr));
     gap: var(--space-4);
     margin-bottom: var(--space-8);
 }
@@ -1042,5 +1046,180 @@ body {
     .file-item-icon {
         width: 40px;
         height: 40px;
+    }
+}
+
+/* --- Global Drag Overlay --- */
+.global-drag-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(99, 102, 241, 0.1);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+body.drag-active .global-drag-overlay {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.global-drag-overlay .drag-content {
+    text-align: center;
+    color: var(--color-primary);
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.drag-active .global-drag-overlay .drag-content {
+    transform: scale(1);
+}
+
+.global-drag-overlay h3 {
+    font-size: 1.5rem;
+    margin-top: var(--space-4);
+    font-weight: 600;
+}
+
+/* --- Floating Action Button (FAB) --- */
+.fab-container {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 16px;
+    /* Prevent text selection during drag */
+    user-select: none; 
+    touch-action: none;
+}
+
+.fab-main {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    z-index: 2;
+}
+
+.fab-main:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+.fab-main:active {
+    transform: scale(0.95);
+}
+
+.fab-main svg {
+    transition: transform 0.3s ease;
+}
+
+.fab-container.active .fab-main svg {
+    transform: rotate(45deg);
+}
+
+.fab-menu {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(20px) scale(0.8);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    align-items: center; /* Ensure items are centered */
+}
+
+.fab-container.active .fab-menu {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+}
+
+.fab-item {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    position: relative;
+    text-decoration: none; /* For any links */
+}
+
+.fab-item:hover {
+    background: var(--bg-secondary);
+    transform: scale(1.1);
+    color: var(--color-primary);
+}
+
+.fab-label {
+    position: absolute;
+    right: 60px;
+    background: var(--surface-primary);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(10px);
+    transition: all 0.2s ease;
+    pointer-events: none;
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+}
+
+.fab-container.left-aligned .fab-label {
+    right: auto;
+    left: 60px;
+    transform: translateX(-10px);
+}
+
+.fab-item:hover .fab-label {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* --- Mobile Responsiveness Updates --- */
+@media (max-width: 768px) {
+    /* Hide top nav text on mobile, icons only are fine or move to bottom if needed. 
+       Current CSS already hides spans. */
+    
+    /* Adjust grid for mobile */
+    :root {
+        --grid-min-width: 100%; /* Force list view on mobile */
+    }
+    
+    .file-card {
+        padding: var(--space-4);
+    }
+
+    .fab-container {
+        bottom: 24px;
+        right: 24px;
     }
 }

@@ -1,14 +1,17 @@
-import { GoogleDriveAPI } from './google-drive-api.js';
-import { handleUpload } from './upload-handler.js';
-import { handleDownload } from './download-handler.js';
-import { handleAdmin } from './admin-handler.js';
-import { handleChunkedUpload } from './chunked-upload-handler.js';
-import { RateLimiter } from './rate-limiter.js';
+import { handleUpload } from './core/handlers/upload.js';
+import { handleDownload } from './core/handlers/download.js';
+import { handleAdmin } from './core/handlers/admin.js';
+import { handleChunkedUpload } from './core/handlers/chunked-upload.js';
+import { RateLimiter } from './core/utils/rate-limiter.js';
+import { buildCorsHeaders, resolveCorsOrigin } from './core/utils/helpers.js';
+import { handleShare } from './core/handlers/share.js';
+import { getStorageProvider } from './storage/factory.js';
+import { getConfig } from './config.js';
 
 // --- Optimizations & Security Enhancements ---
 
-// 1. Cached GoogleDriveAPI instance to reuse access tokens
-let driveAPI;
+// 1. Cached Storage provider instance
+let storageProvider;
 
 // 2. Global RateLimiter instance
 const rateLimiter = new RateLimiter();
@@ -37,17 +40,13 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
-
-    // 4. Stricter CORS policy for API routes
-    const allowedOrigin = url.origin;
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': allowedOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Range',
-      'Vary': 'Origin',
-    };
+    const corsHeaders = buildCorsHeaders(request, env);
+    const { allowedOrigin } = resolveCorsOrigin(request, env);
 
     if (request.method === 'OPTIONS') {
+      if (request.headers.get('Origin') && !allowedOrigin) {
+        return new Response('CORS origin not allowed', { status: 403 });
+      }
       return new Response(null, { headers: corsHeaders });
     }
 
@@ -55,24 +54,40 @@ export default {
     if (path === '/' || path === '/index.html') {
         return env.ASSETS.fetch(new Request(url.origin + '/index.html', request));
     }
-    if (path === '/styles.css' || path === '/client.js') {
+    if (path.startsWith('/css/') || path.startsWith('/js/') || path.startsWith('/assets/')) {
         return env.ASSETS.fetch(request);
     }
+    if (path === '/favicon.svg') {
+        return env.ASSETS.fetch(new Request(url.origin + '/assets/favicon.svg', request));
+    }
 
+    const config = getConfig(env);
     const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
     const isChunkedUpload = path.startsWith('/chunked-upload/chunk/');
     const isNormalUpload = path === '/upload';
     const isAdminOperation = path.startsWith('/admin');
 
-    if (isNormalUpload || isAdminOperation) {
-      if (!rateLimiter.isAllowed(clientIP, 10, 60000)) {
+    const rateWindowMs = config.rateLimitWindowMs;
+    const uploadLimit = config.maxUploadRequestsPerMin;
+    const adminLimit = config.maxAdminRequestsPerMin;
+    const chunkLimit = config.maxChunkRequestsPerMin;
+
+    if (isNormalUpload) {
+      if (!rateLimiter.isAllowed(clientIP, uploadLimit, rateWindowMs)) {
+        return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { 
+          status: 429, 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+    } else if (isAdminOperation) {
+      if (!rateLimiter.isAllowed(clientIP, adminLimit, rateWindowMs)) {
         return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { 
           status: 429, 
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
       }
     } else if (isChunkedUpload) {
-      if (!rateLimiter.isAllowed(clientIP, 100, 60000)) {
+      if (!rateLimiter.isAllowed(clientIP, chunkLimit, rateWindowMs)) {
         return new Response(JSON.stringify({ error: '分块上传请求过于频繁，请稍后再试' }), { 
           status: 429, 
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -81,58 +96,28 @@ export default {
     }
 
     try {
-      // Initialize GoogleDriveAPI instance on first request
-      if (!driveAPI) {
-        // 检查Google Drive API配置
-        if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {
-          console.warn('Google Drive API not configured. Upload/download features will not work.');
-          console.warn('Please set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY environment variables.');
-        } else {
-          driveAPI = new GoogleDriveAPI(
-            env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            env.GOOGLE_PRIVATE_KEY
-          );
-        }
+      if (!storageProvider) {
+        storageProvider = await getStorageProvider(env);
       }
 
       if (path === '/upload' && request.method === 'POST') {
-        if (!driveAPI) {
-          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法上传文件' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
-        }
-        return handleUpload(request, env, driveAPI, url);
+        return handleUpload(request, env, storageProvider, url);
       }
 
       if (path.startsWith('/chunked-upload/')) {
-        if (!driveAPI) {
-          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法上传文件' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
-        }
-        return handleChunkedUpload(request, env, driveAPI, path, url);
+        return handleChunkedUpload(request, env, storageProvider, path, url);
       }
 
       if (path.startsWith('/d/') && request.method === 'GET') {
-        if (!driveAPI) {
-          return new Response('Google Drive API未配置，无法下载文件', {
-            status: 503,
-            headers: corsHeaders
-          });
-        }
-        return handleDownload(request, env, driveAPI, path);
+        return handleDownload(request, env, storageProvider, path);
+      }
+
+      if (path.startsWith('/share') || path.startsWith('/s/')) {
+        return handleShare(request, env, storageProvider, path, url);
       }
 
       if (path.startsWith('/admin')) {
-        if (!driveAPI) {
-          return new Response(JSON.stringify({ error: 'Google Drive API未配置，无法访问管理功能' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
-        }
-        return handleAdmin(request, env, driveAPI, path, url);
+        return handleAdmin(request, env, storageProvider, path, url);
       }
 
       if (path === '/speed-test' && request.method === 'POST') {

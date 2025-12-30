@@ -12,12 +12,34 @@ let allFiles = []; // For admin file list
 let filteredFiles = [];
 let selectedFiles = new Set();
 
-// --- Constants ---
-const CHUNK_UPLOAD_THRESHOLD = 50 * 1024 * 1024; // 50MB
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB - 保守策略防止HTTP 500
-const MAX_CONCURRENT_UPLOADS = 2; // 最大并发上传数
-const MAX_RETRIES = 3; // 最大重试次数
-const RETRY_DELAY_BASE = 1000; // 重试基础延迟（毫秒）
+// --- Constants (allow override via window.CLOUDLINK_CONFIG) ---
+const CLOUDLINK_CONFIG = window.CLOUDLINK_CONFIG || {};
+
+const parsePositiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const CHUNK_UPLOAD_THRESHOLD = parsePositiveInt(
+    CLOUDLINK_CONFIG.chunkUploadThreshold,
+    50 * 1024 * 1024
+); // 50MB
+const CHUNK_SIZE = parsePositiveInt(
+    CLOUDLINK_CONFIG.chunkSize,
+    2 * 1024 * 1024
+); // 2MB - 保守策略防止HTTP 500
+const MAX_CONCURRENT_UPLOADS = parsePositiveInt(
+    CLOUDLINK_CONFIG.maxConcurrentUploads,
+    2
+); // 最大并发上传数
+const MAX_RETRIES = parsePositiveInt(
+    CLOUDLINK_CONFIG.maxRetries,
+    3
+); // 最大重试次数
+const RETRY_DELAY_BASE = parsePositiveInt(
+    CLOUDLINK_CONFIG.retryDelayBase,
+    1000
+); // 重试基础延迟（毫秒）
 
 // =================================================================================
 // Initialization
@@ -28,6 +50,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initEventListeners();
     checkAuthStatus();
     switchToUpload();
+    initDraggableFAB();
+    initGlobalDrag();
 });
 
 function initAuthManager() {
@@ -401,6 +425,7 @@ async function uploadLargeFile(fileObj) {
         if (!startResponse.ok) throw new Error('无法启动分块上传会话');
         const session = await startResponse.json();
         fileObj.uploadSessionId = session.sessionId;
+        fileObj.uploadSessionToken = session.sessionToken;
     }
 
     // 2. Upload chunks
@@ -424,105 +449,65 @@ async function uploadLargeFile(fileObj) {
         const end = Math.min(start + CHUNK_SIZE, fileObj.size);
         const chunk = fileObj.file.slice(start, end);
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', `/chunked-upload/chunk/${fileObj.uploadSessionId}`);
-        xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
-
-        const chunkUploadPromise = new Promise((resolve, reject) => {
-            xhr.upload.addEventListener('progress', (event) => {
-                if (event.lengthComputable) {
-                    const currentUploaded = start + event.loaded;
-                    const currentTime = Date.now();
-                    const timeDiff = (currentTime - lastProgressTime) / 1000; // in seconds
-                    const bytesDiff = currentUploaded - lastUploadedBytes;
-
-                    if (timeDiff > 0) {
-                        fileObj.uploadSpeed = bytesDiff / timeDiff;
-                        // 记录峰值速度
-                        if (fileObj.uploadSpeed > fileObj.peakSpeed) {
-                            fileObj.peakSpeed = fileObj.uploadSpeed;
-                        }
-                    }
-                    fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
-                    fileObj.uploadedBytes = currentUploaded;
-                    renderFileQueue();
-
-                    lastProgressTime = currentTime;
-                    lastUploadedBytes = currentUploaded;
-                }
-            });
-
-            xhr.addEventListener('load', () => {
-                if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 308) {
-                    resolve(JSON.parse(xhr.responseText));
-                } else {
-                    reject(new Error(JSON.parse(xhr.responseText).error || `分块上传失败: HTTP ${xhr.status}`));
-                }
-            });
-
-            xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
-            xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
-
-            xhr.send(chunk);
-        });
-
-        let result;
-        let retryCount = 0;
-        
-        while (retryCount <= MAX_RETRIES) {
-            try {
-                result = await chunkUploadPromise;
-                break; // 成功则退出重试循环
-            } catch (error) {
-                retryCount++;
-                if (retryCount > MAX_RETRIES) {
-                    throw error; // 超过最大重试次数，抛出错误
-                }
-                
-                // 指数退避延迟
-                const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount - 1);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                
-                // 重新创建 xhr 请求
-                const xhr = new XMLHttpRequest();
-                xhr.open('PUT', `/chunked-upload/chunk/${fileObj.uploadSessionId}`);
-                xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
-                
-                const chunkUploadPromise = new Promise((resolve, reject) => {
-                    xhr.upload.addEventListener('progress', (event) => {
-                        if (event.lengthComputable) {
-                            const currentUploaded = start + event.loaded;
-                            const currentTime = Date.now();
-                            const timeDiff = (currentTime - lastProgressTime) / 1000;
-                            const bytesDiff = currentUploaded - lastUploadedBytes;
-
-                            if (timeDiff > 0) {
-                                fileObj.uploadSpeed = bytesDiff / timeDiff;
-                            }
-                            fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
-                            fileObj.uploadedBytes = currentUploaded;
-                            renderFileQueue();
-
-                            lastProgressTime = currentTime;
-                            lastUploadedBytes = currentUploaded;
-                        }
-                    });
-
-                    xhr.addEventListener('load', () => {
-                        if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 308) {
-                            resolve(JSON.parse(xhr.responseText));
-                        } else {
-                            reject(new Error(JSON.parse(xhr.responseText).error || `分块上传失败: HTTP ${xhr.status}`));
-                        }
-                    });
-
-                    xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
-                    xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
-
-                    xhr.send(chunk);
-                });
+        const uploadChunkWithRetry = async (retryCount = 0) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', `/chunked-upload/chunk/${fileObj.uploadSessionId}`);
+            xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
+            if (fileObj.uploadSessionToken) {
+                xhr.setRequestHeader('X-Upload-Token', fileObj.uploadSessionToken);
             }
-        }
+
+            const promise = new Promise((resolve, reject) => {
+                xhr.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) {
+                        const currentUploaded = start + event.loaded;
+                        const currentTime = Date.now();
+                        const timeDiff = (currentTime - lastProgressTime) / 1000;
+                        const bytesDiff = currentUploaded - lastUploadedBytes;
+
+                        if (timeDiff > 0) {
+                            fileObj.uploadSpeed = bytesDiff / timeDiff;
+                            if (fileObj.uploadSpeed > fileObj.peakSpeed) {
+                                fileObj.peakSpeed = fileObj.uploadSpeed;
+                            }
+                        }
+                        fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
+                        fileObj.uploadedBytes = currentUploaded;
+                        renderFileQueue();
+
+                        lastProgressTime = currentTime;
+                        lastUploadedBytes = currentUploaded;
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 308) {
+                        resolve(JSON.parse(xhr.responseText));
+                    } else {
+                        reject(new Error(JSON.parse(xhr.responseText).error || `分块上传失败: HTTP ${xhr.status}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => reject(new Error('网络错误或服务器无响应')));
+                xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+
+                xhr.send(chunk);
+            });
+
+            try {
+                return await promise;
+            } catch (error) {
+                if (retryCount >= MAX_RETRIES) {
+                    throw error;
+                }
+                const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount);
+                console.warn(`Chunk upload failed, retrying in ${delay}ms... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return uploadChunkWithRetry(retryCount + 1);
+            }
+        };
+
+        const result = await uploadChunkWithRetry();
 
         if (result.completed) {
             fileObj.downloadUrl = result.downloadUrl;
@@ -549,11 +534,86 @@ function togglePause(fileId) {
 // DOM & UI Rendering
 // =================================================================================
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function createSvg(attrs, children = []) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    Object.entries(attrs).forEach(([key, value]) => svg.setAttribute(key, value));
+    children.forEach((child) => {
+        const element = document.createElementNS(SVG_NS, child.type);
+        Object.entries(child.attrs).forEach(([key, value]) => element.setAttribute(key, value));
+        svg.appendChild(element);
+    });
+    return svg;
+}
+
+function createFileTypeIcon(mimeType) {
+    const type = getFileType(mimeType);
+    switch (type) {
+        case 'image':
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'rect', attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' } },
+                    { type: 'circle', attrs: { cx: '8.5', cy: '8.5', r: '1.5' } },
+                    { type: 'polyline', attrs: { points: '21 15 16 10 5 21' } }
+                ]
+            );
+        case 'video':
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'polygon', attrs: { points: '23 7 16 12 23 17 23 7' } },
+                    { type: 'rect', attrs: { x: '1', y: '5', width: '15', height: '14', rx: '2', ry: '2' } }
+                ]
+            );
+        case 'audio':
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'path', attrs: { d: 'M9 18V5l12-2v13' } },
+                    { type: 'circle', attrs: { cx: '6', cy: '18', r: '3' } },
+                    { type: 'circle', attrs: { cx: '18', cy: '16', r: '3' } }
+                ]
+            );
+        case 'document':
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'path', attrs: { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' } },
+                    { type: 'polyline', attrs: { points: '14 2 14 8 20 8' } },
+                    { type: 'line', attrs: { x1: '16', y1: '13', x2: '8', y2: '13' } },
+                    { type: 'line', attrs: { x1: '16', y1: '17', x2: '8', y2: '17' } },
+                    { type: 'polyline', attrs: { points: '10 9 9 9 8 9' } }
+                ]
+            );
+        case 'archive':
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'line', attrs: { x1: '10', y1: '1', x2: '10', y2: '5' } },
+                    { type: 'line', attrs: { x1: '14', y1: '1', x2: '14', y2: '5' } },
+                    { type: 'path', attrs: { d: 'M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8' } },
+                    { type: 'path', attrs: { d: 'M4 12h16' } },
+                    { type: 'path', attrs: { d: 'M10 5h4' } },
+                    { type: 'path', attrs: { d: 'M12 5v14' } }
+                ]
+            );
+        default:
+            return createSvg(
+                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'path', attrs: { d: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z' } }
+                ]
+            );
+    }
+}
+
 function renderFileQueue() {
     const container = document.getElementById('fileQueue');
     if (fileQueue.length === 0) {
-        container.innerHTML = '';
-        updateUploadButton(); // 确保隐藏上传按钮
+        container.replaceChildren();
+        updateUploadButton();
         return;
     }
     const fragment = document.createDocumentFragment();
@@ -562,6 +622,29 @@ function renderFileQueue() {
         item.className = 'file-item';
         item.dataset.fileId = fileObj.id;
 
+        // Icon
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'file-item-icon';
+        iconDiv.appendChild(createFileTypeIcon(fileObj.file.type));
+        item.appendChild(iconDiv);
+
+        // Info
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'file-item-info';
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'file-name';
+        nameDiv.textContent = fileObj.name; // Safe XSS prevention
+        infoDiv.appendChild(nameDiv);
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'file-meta';
+        
+        const sizeSpan = document.createElement('span');
+        sizeSpan.textContent = formatFileSize(fileObj.size);
+        metaDiv.appendChild(sizeSpan);
+
+        const statusSpan = document.createElement('span');
         let statusText = '';
         switch (fileObj.status) {
             case 'pending': statusText = '等待上传'; break;
@@ -570,56 +653,70 @@ function renderFileQueue() {
             case 'success': statusText = '上传成功'; break;
             case 'error': statusText = '上传失败'; break;
         }
+        statusSpan.textContent = statusText;
+        metaDiv.appendChild(statusSpan);
+        infoDiv.appendChild(metaDiv);
 
-        let actionsHtml = '';
-        if (fileObj.status === 'pending') {
-            actionsHtml = `<button class="btn btn-secondary" onclick="removeFromQueue(${fileObj.id})">移除</button>`;
-        } else if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-            const pauseText = fileObj.isPaused ? '继续' : '暂停';
-            actionsHtml = `<button class="btn btn-secondary" onclick="togglePause(${fileObj.id})">${pauseText}</button>`;
-        } else if (fileObj.status === 'success') {
-            actionsHtml = `<button class="btn btn-secondary" onclick="copyToClipboard('${fileObj.downloadUrl}')">复制链接</button>`;
-        }
-
-        let progressHtml = '';
         if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-            progressHtml = `
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${fileObj.progress}%;"></div>
-                </div>`;
+            const progressBar = document.createElement('div');
+            progressBar.className = 'progress-bar';
+            const progressFill = document.createElement('div');
+            progressFill.className = 'progress-fill';
+            progressFill.style.width = `${fileObj.progress}%`;
+            progressBar.appendChild(progressFill);
+            infoDiv.appendChild(progressBar);
         }
+        item.appendChild(infoDiv);
+
+        // Actions
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-item-actions';
         
-        let successHtml = '';
+        if (fileObj.status === 'pending') {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-secondary';
+            btn.textContent = '移除';
+            btn.onclick = () => removeFromQueue(fileObj.id);
+            actionsDiv.appendChild(btn);
+        } else if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-secondary';
+            btn.textContent = fileObj.isPaused ? '继续' : '暂停';
+            btn.onclick = () => togglePause(fileObj.id);
+            actionsDiv.appendChild(btn);
+        } else if (fileObj.status === 'success') {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-secondary';
+            btn.textContent = '复制链接';
+            btn.onclick = () => copyToClipboard(fileObj.downloadUrl);
+            actionsDiv.appendChild(btn);
+        }
+        item.appendChild(actionsDiv);
+
+        // Success Info (Input)
         if (fileObj.status === 'success' && fileObj.downloadUrl) {
-            successHtml = `
-                <div class="success-info">
-                    <input type="text" class="download-link-input" value="${fileObj.downloadUrl}" readonly/>
-                </div>`;
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success-info';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'download-link-input';
+            input.value = fileObj.downloadUrl;
+            input.readOnly = true;
+            successDiv.appendChild(input);
+            item.appendChild(successDiv);
         }
 
-        let errorHtml = '';
+        // Error Info
         if (fileObj.status === 'error' && fileObj.error) {
-            errorHtml = `<div class="file-error">${fileObj.error}</div>`;
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'file-error';
+            errorDiv.textContent = fileObj.error; // Safe
+            item.appendChild(errorDiv);
         }
 
-        item.innerHTML = `
-            <div class="file-item-icon">${getFileTypeIcon(fileObj.file.type)}</div>
-            <div class="file-item-info">
-                <div class="file-name">${fileObj.name}</div>
-                <div class="file-meta">
-                    <span>${formatFileSize(fileObj.size)}</span>
-                    <span>${statusText}</span>
-                </div>
-                ${progressHtml}
-            </div>
-            <div class="file-item-actions">${actionsHtml}</div>
-            ${successHtml}
-            ${errorHtml}
-        `;
         fragment.appendChild(item);
     });
-    container.innerHTML = '';
-    container.appendChild(fragment);
+    container.replaceChildren(fragment);
 }
 
 function updateUploadButton() {
@@ -672,7 +769,7 @@ async function loadFiles(reset = false) {
         filteredFiles = [];
         selectedFiles.clear();
         nextPageToken = null;
-        document.getElementById('filesGrid').innerHTML = '';
+        document.getElementById('filesGrid').replaceChildren();
     }
     const loadMoreBtn = document.getElementById('loadMoreBtn');
     loadMoreBtn.disabled = true;
@@ -726,24 +823,6 @@ function handleSort() {
     renderFiles();
 }
 
-function getFileTypeIcon(mimeType) {
-    const type = getFileType(mimeType);
-    switch (type) {
-        case 'image':
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
-        case 'video':
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
-        case 'audio':
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>';
-        case 'document':
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
-        case 'archive':
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="1" x2="10" y2="5"></line><line x1="14" y1="1" x2="14" y2="5"></line><path d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"></path><path d="M4 12h16"></path><path d="M10 5h4"></path><path d="M12 5v14"></path></svg>';
-        default:
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path></svg>';
-    }
-}
-
 function renderFiles() {
     const grid = document.getElementById('filesGrid');
     const fragment = document.createDocumentFragment();
@@ -754,26 +833,62 @@ function renderFiles() {
         card.dataset.fileId = file.id;
         card.onclick = () => handleFileSelectToggle(file.id);
 
-        card.innerHTML = `
-            <div class="file-card-icon">${getFileTypeIcon(file.mimeType)}</div>
-            <div class="file-card-info">
-                <div class="file-card-name">${file.name}</div>
-                <div class="file-card-meta">
-                    <span>${formatFileSize(file.size)}</span>
-                    <span>${new Date(file.createdTime).toLocaleDateString()}</span>
-                </div>
-            </div>
-            <div class="file-card-actions">
-                <button class="btn-secondary" onclick="event.stopPropagation(); previewFile('${file.id}', '${file.name}', '${file.mimeType}')">预览</button>
-                <button class="btn-secondary" onclick="event.stopPropagation(); copyToClipboard('${window.location.origin}/d/${file.id}')">复制</button>
-                <button class="btn-secondary" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">删除</button>
-            </div>
-        `;
+        // Icon
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'file-card-icon';
+        iconDiv.appendChild(createFileTypeIcon(file.mimeType));
+        card.appendChild(iconDiv);
+
+        // Info
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'file-card-info';
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'file-card-name';
+        nameDiv.textContent = file.name; // Safe XSS prevention
+        infoDiv.appendChild(nameDiv);
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'file-card-meta';
+        
+        const sizeSpan = document.createElement('span');
+        sizeSpan.textContent = formatFileSize(file.size);
+        metaDiv.appendChild(sizeSpan);
+
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = new Date(file.createdTime).toLocaleDateString();
+        metaDiv.appendChild(dateSpan);
+        
+        infoDiv.appendChild(metaDiv);
+        card.appendChild(infoDiv);
+
+        // Actions
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-card-actions';
+
+        const previewBtn = document.createElement('button');
+        previewBtn.className = 'btn-secondary';
+        previewBtn.textContent = '预览';
+        previewBtn.onclick = (e) => { e.stopPropagation(); previewFile(file.id, file.name, file.mimeType); };
+        actionsDiv.appendChild(previewBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn-secondary';
+        copyBtn.textContent = '复制';
+        copyBtn.onclick = (e) => { e.stopPropagation(); copyToClipboard(`${window.location.origin}/d/${file.id}`); };
+        actionsDiv.appendChild(copyBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-secondary';
+        deleteBtn.textContent = '删除';
+        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteSingleFile(file.id); };
+        actionsDiv.appendChild(deleteBtn);
+
+        card.appendChild(actionsDiv);
         fragment.appendChild(card);
     });
 
-    grid.innerHTML = '';
-    grid.appendChild(fragment);
+    grid.replaceChildren(fragment);
     
     // 更新删除选中按钮的显示状态
     updateSelectedActions();
@@ -881,62 +996,102 @@ function previewFile(fileId, fileName, mimeType) {
     
     const fileUrl = `/d/${fileId}`;
     const fileType = getFileType(mimeType);
-    
+
+    clearElement(content);
+
     switch (fileType) {
-        case 'image':
-            content.innerHTML = `<img src="${fileUrl}" alt="${fileName}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                <div style="display: none;" class="file-info">
-                    <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
-                        ${getFileTypeIcon(mimeType)}
-                    </div>
-                    <h3>${fileName}</h3>
-                    <p>图片加载失败，请下载后查看</p>
-                </div>`;
+        case 'image': {
+            const img = document.createElement('img');
+            img.src = fileUrl;
+            img.alt = fileName;
+            img.loading = 'lazy';
+
+            const fallback = buildFileInfo({
+                fileName,
+                mimeType,
+                message: '图片加载失败，请下载后查看'
+            });
+            fallback.style.display = 'none';
+
+            img.addEventListener('error', () => {
+                img.style.display = 'none';
+                fallback.style.display = 'block';
+            });
+
+            content.appendChild(img);
+            content.appendChild(fallback);
             break;
-        case 'video':
-            // 检查是否为可能不支持的格式
-            const isProblematicFormat = mimeType.includes('mov') || mimeType.includes('quicktime');
-            
-            if (isProblematicFormat) {
-                content.innerHTML = `
-                    <div>
-                        <video controls preload="metadata" style="max-width: 100%; max-height: 500px;" onloadstart="handleVideoLoadStart(this)" onerror="handleVideoError(this, '${fileName}', '${mimeType}')">
-                            <source src="${fileUrl}" type="${mimeType}">
-                            <source src="${fileUrl}" type="video/mp4">
-                            您的浏览器不支持视频播放。
-                        </video>
-                        <div class="format-warning" style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-                            <strong>提示：</strong>MOV格式在网页中的兼容性有限，如无法播放请下载后使用专业播放器观看。
-                        </div>
-                    </div>`;
-            } else {
-                content.innerHTML = `
-                    <video controls preload="metadata" style="max-width: 100%; max-height: 500px;" onloadstart="handleVideoLoadStart(this)" onerror="handleVideoError(this, '${fileName}', '${mimeType}')">
-                        <source src="${fileUrl}" type="${mimeType}">
-                        <source src="${fileUrl}" type="video/mp4">
-                        <source src="${fileUrl}" type="video/webm">
-                        您的浏览器不支持视频播放。
-                    </video>`;
+        }
+        case 'video': {
+            const wrapper = document.createElement('div');
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.style.maxWidth = '100%';
+            video.style.maxHeight = '500px';
+            video.addEventListener('loadstart', () => handleVideoLoadStart(video));
+            video.addEventListener('error', () => handleVideoError(video, fileName, mimeType));
+
+            const sourcePrimary = document.createElement('source');
+            sourcePrimary.src = fileUrl;
+            sourcePrimary.type = mimeType;
+            video.appendChild(sourcePrimary);
+
+            const sourceMp4 = document.createElement('source');
+            sourceMp4.src = fileUrl;
+            sourceMp4.type = 'video/mp4';
+            video.appendChild(sourceMp4);
+
+            const isProblematicFormat = mimeType && (mimeType.includes('mov') || mimeType.includes('quicktime'));
+            if (!isProblematicFormat) {
+                const sourceWebm = document.createElement('source');
+                sourceWebm.src = fileUrl;
+                sourceWebm.type = 'video/webm';
+                video.appendChild(sourceWebm);
             }
+
+            wrapper.appendChild(video);
+
+            if (isProblematicFormat) {
+                const warning = document.createElement('div');
+                warning.className = 'format-warning';
+                warning.style.cssText = 'background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);';
+                const strong = document.createElement('strong');
+                strong.textContent = '提示：';
+                const text = document.createElement('span');
+                text.textContent = 'MOV格式在网页中的兼容性有限，如无法播放请下载后使用专业播放器观看。';
+                warning.appendChild(strong);
+                warning.appendChild(text);
+                wrapper.appendChild(warning);
+            }
+
+            content.appendChild(wrapper);
             break;
-        case 'audio':
-            content.innerHTML = `
-                <audio controls preload="metadata" style="width: 100%; max-width: 500px;" onerror="handleAudioError(this, '${fileName}', '${mimeType}')">
-                    <source src="${fileUrl}" type="${mimeType}">
-                    您的浏览器不支持音频播放。
-                </audio>`;
+        }
+        case 'audio': {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.preload = 'metadata';
+            audio.style.width = '100%';
+            audio.style.maxWidth = '500px';
+            audio.addEventListener('error', () => handleAudioError(audio, fileName, mimeType));
+
+            const source = document.createElement('source');
+            source.src = fileUrl;
+            source.type = mimeType;
+            audio.appendChild(source);
+            content.appendChild(audio);
             break;
-        default:
-            content.innerHTML = `
-                <div class="file-info">
-                    <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
-                        ${getFileTypeIcon(mimeType)}
-                    </div>
-                    <h3>${fileName}</h3>
-                    <p>文件类型：${mimeType}</p>
-                    <p>此文件类型不支持预览，请下载后查看。</p>
-                </div>`;
+        }
+        default: {
+            const info = buildFileInfo({
+                fileName,
+                mimeType,
+                message: '此文件类型不支持预览，请下载后查看。'
+            });
+            content.appendChild(info);
             break;
+        }
     }
     
     modal.style.display = 'flex';
@@ -987,53 +1142,60 @@ function handleVideoLoadStart(video) {
 }
 
 function handleVideoError(video, fileName, mimeType) {
-    // 如果视频加载失败，显示下载提示
-    const errorContent = `
-        <div class="file-info">
-            <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
-                ${getFileTypeIcon(mimeType)}
-            </div>
-            <h3>${fileName}</h3>
-            <p>文件类型：${mimeType}</p>
-            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;">
-                <p style="color: var(--text-secondary); margin: 0;">
-                    <strong>视频预览失败</strong><br>
-                    此视频格式可能不受浏览器支持。<br>
-                    ${mimeType.includes('mov') ? 'MOV格式在某些浏览器中支持有限。' : ''}
-                    请下载后使用专业播放器观看。
-                </p>
-            </div>
-        </div>`;
-    
+    const info = buildFileInfo({
+        fileName,
+        mimeType,
+        message: '此视频格式可能不受浏览器支持，请下载后使用专业播放器观看。'
+    });
+    const hint = document.createElement('div');
+    hint.style.cssText = 'background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;';
+    const hintText = document.createElement('p');
+    hintText.style.cssText = 'color: var(--text-secondary); margin: 0;';
+    const strong = document.createElement('strong');
+    strong.textContent = '视频预览失败';
+    hintText.appendChild(strong);
+    hintText.appendChild(document.createElement('br'));
+    if (mimeType && mimeType.includes('mov')) {
+        hintText.appendChild(document.createTextNode('MOV格式在某些浏览器中支持有限。'));
+        hintText.appendChild(document.createElement('br'));
+    }
+    hintText.appendChild(document.createTextNode('请下载后使用专业播放器观看。'));
+    hint.appendChild(hintText);
+    info.appendChild(hint);
+
     const content = document.getElementById('previewContent');
     if (content) {
-        content.innerHTML = errorContent;
+        clearElement(content);
+        content.appendChild(info);
     }
     
     showToast('视频格式不受支持，请下载后观看', 'info');
 }
 
 function handleAudioError(audio, fileName, mimeType) {
-    // 如果音频加载失败，显示下载提示
-    const errorContent = `
-        <div class="file-info">
-            <div class="file-icon" style="font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);">
-                ${getFileTypeIcon(mimeType)}
-            </div>
-            <h3>${fileName}</h3>
-            <p>文件类型：${mimeType}</p>
-            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;">
-                <p style="color: var(--text-secondary); margin: 0;">
-                    <strong>音频预览失败</strong><br>
-                    此音频格式可能不受浏览器支持。<br>
-                    请下载后使用专业播放器播放。
-                </p>
-            </div>
-        </div>`;
-    
+    const info = buildFileInfo({
+        fileName,
+        mimeType,
+        message: '此音频格式可能不受浏览器支持，请下载后使用专业播放器播放。'
+    });
+    const hint = document.createElement('div');
+    hint.style.cssText = 'background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-md); margin: 1rem 0;';
+    const hintText = document.createElement('p');
+    hintText.style.cssText = 'color: var(--text-secondary); margin: 0;';
+    const strong = document.createElement('strong');
+    strong.textContent = '音频预览失败';
+    hintText.appendChild(strong);
+    hintText.appendChild(document.createElement('br'));
+    hintText.appendChild(document.createTextNode('此音频格式可能不受浏览器支持。'));
+    hintText.appendChild(document.createElement('br'));
+    hintText.appendChild(document.createTextNode('请下载后使用专业播放器播放。'));
+    hint.appendChild(hintText);
+    info.appendChild(hint);
+
     const content = document.getElementById('previewContent');
     if (content) {
-        content.innerHTML = errorContent;
+        clearElement(content);
+        content.appendChild(info);
     }
     
     showToast('音频格式不受支持，请下载后播放', 'info');
@@ -1045,21 +1207,12 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    
-    let icon = '';
-    switch(type) {
-        case 'success':
-            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
-            break;
-        case 'error':
-            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
-            break;
-        case 'info':
-            icon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
-            break;
-    }
 
-    toast.innerHTML = `${icon}<span>${message}</span>`;
+    const icon = createToastIcon(type);
+    const text = document.createElement('span');
+    text.textContent = message;
+    toast.appendChild(icon);
+    toast.appendChild(text);
     
     container.appendChild(toast);
     
@@ -1154,6 +1307,70 @@ function getFileType(mimeType) {
     return 'other';
 }
 
+function clearElement(element) {
+    element.replaceChildren();
+}
+
+function buildFileInfo({ fileName, mimeType, message }) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'file-info';
+
+    const icon = document.createElement('div');
+    icon.className = 'file-icon';
+    icon.style.cssText = 'font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);';
+    icon.appendChild(createFileTypeIcon(mimeType));
+    wrapper.appendChild(icon);
+
+    const title = document.createElement('h3');
+    title.textContent = fileName;
+    wrapper.appendChild(title);
+
+    if (mimeType) {
+        const typePara = document.createElement('p');
+        typePara.textContent = `文件类型：${mimeType}`;
+        wrapper.appendChild(typePara);
+    }
+
+    if (message) {
+        const messagePara = document.createElement('p');
+        messagePara.textContent = message;
+        wrapper.appendChild(messagePara);
+    }
+
+    return wrapper;
+}
+
+function createToastIcon(type) {
+    switch (type) {
+        case 'success':
+            return createSvg(
+                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'path', attrs: { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14' } },
+                    { type: 'polyline', attrs: { points: '22 4 12 14.01 9 11.01' } }
+                ]
+            );
+        case 'error':
+            return createSvg(
+                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'circle', attrs: { cx: '12', cy: '12', r: '10' } },
+                    { type: 'line', attrs: { x1: '12', y1: '8', x2: '12', y2: '12' } },
+                    { type: 'line', attrs: { x1: '12', y1: '16', x2: '12.01', y2: '16' } }
+                ]
+            );
+        default:
+            return createSvg(
+                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+                [
+                    { type: 'circle', attrs: { cx: '12', cy: '12', r: '10' } },
+                    { type: 'line', attrs: { x1: '12', y1: '16', x2: '12', y2: '12' } },
+                    { type: 'line', attrs: { x1: '12', y1: '8', x2: '12.01', y2: '8' } }
+                ]
+            );
+    }
+}
+
 // =================================================================================
 // Theme Switching Logic (iOS 26 Style)
 // =================================================================================
@@ -1180,14 +1397,173 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(savedTheme);
 
     // Event listener for the toggle button
-    themeToggleButton.addEventListener('click', () => {
+    const fabThemeToggle = document.getElementById('fab-theme-toggle');
+    const toggleHandler = () => {
         const currentTheme = htmlElement.getAttribute('data-theme');
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        
-        // Save the new theme to localStorage
         localStorage.setItem('theme', newTheme);
-        
-        // Apply the new theme
         applyTheme(newTheme);
-    });
+    };
+
+    if (themeToggleButton) themeToggleButton.addEventListener('click', toggleHandler);
+    if (fabThemeToggle) fabThemeToggle.addEventListener('click', toggleHandler);
 });
+
+// =================================================================================
+// FAB & Global Drag Logic
+// =================================================================================
+
+function initDraggableFAB() {
+    const fab = document.getElementById('fab-container');
+    const mainBtn = document.getElementById('fab-main');
+    if (!fab || !mainBtn) return;
+
+    let isPointerDown = false;
+    let isDragging = false;
+    let hasMoved = false; // Distinguish click from drag
+    let startX, startY;
+    let initialLeft, initialTop;
+
+    // Use Pointer Events for unified mouse/touch handling
+    mainBtn.addEventListener('pointerdown', (e) => {
+        isPointerDown = true;
+        isDragging = false;
+        hasMoved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        
+        const rect = fab.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        
+        mainBtn.setPointerCapture(e.pointerId);
+    });
+
+    mainBtn.addEventListener('pointermove', (e) => {
+        if (!isPointerDown) return;
+        
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (!hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+            hasMoved = true;
+            isDragging = true;
+
+            fab.style.transition = 'none'; // Disable transition during drag
+            fab.style.bottom = 'auto'; // Switch to top/left positioning
+            fab.style.right = 'auto';
+            fab.style.left = `${initialLeft}px`;
+            fab.style.top = `${initialTop}px`;
+        }
+        
+        if (!isDragging) return;
+
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+        
+        // Boundaries
+        const maxLeft = window.innerWidth - fab.offsetWidth;
+        const maxTop = window.innerHeight - fab.offsetHeight;
+        
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        fab.style.left = `${newLeft}px`;
+        fab.style.top = `${newTop}px`;
+    });
+
+    mainBtn.addEventListener('pointerup', (e) => {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+        isDragging = false;
+        if (mainBtn.hasPointerCapture(e.pointerId)) {
+            mainBtn.releasePointerCapture(e.pointerId);
+        }
+
+        if (!hasMoved) {
+            // It was a click, toggle menu
+            fab.classList.toggle('active');
+        } else {
+            // It was a drag, snap to edge
+            fab.style.transition = 'left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+            const midPoint = window.innerWidth / 2;
+            const currentRect = fab.getBoundingClientRect();
+            
+            if (currentRect.left + currentRect.width / 2 < midPoint) {
+                fab.style.left = '24px';
+                fab.classList.add('left-aligned');
+            } else {
+                fab.style.left = `${window.innerWidth - fab.offsetWidth - 24}px`;
+                fab.classList.remove('left-aligned');
+            }
+        }
+    });
+
+    const cancelDrag = (e) => {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+        isDragging = false;
+        if (e && mainBtn.hasPointerCapture(e.pointerId)) {
+            mainBtn.releasePointerCapture(e.pointerId);
+        }
+    };
+
+    mainBtn.addEventListener('pointercancel', cancelDrag);
+    mainBtn.addEventListener('lostpointercapture', cancelDrag);
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!fab.contains(e.target) && fab.classList.contains('active')) {
+            fab.classList.remove('active');
+        }
+    });
+}
+
+function initGlobalDrag() {
+    let dragCounter = 0;
+    let isFileDrag = false;
+
+    const isFileDragEvent = (event) => {
+        if (!event.dataTransfer || !event.dataTransfer.types) {
+            return false;
+        }
+        return Array.from(event.dataTransfer.types).includes('Files');
+    };
+    
+    window.addEventListener('dragenter', (e) => {
+        if (!isFileDragEvent(e)) return;
+        e.preventDefault();
+        isFileDrag = true;
+        dragCounter += 1;
+        document.body.classList.add('drag-active');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        if (!isFileDrag) return;
+        e.preventDefault();
+        dragCounter = Math.max(0, dragCounter - 1);
+        if (dragCounter === 0) {
+            isFileDrag = false;
+            document.body.classList.remove('drag-active');
+        }
+    });
+
+    window.addEventListener('dragover', (e) => {
+        if (!isFileDrag) return;
+        e.preventDefault(); // Necessary to allow dropping
+    });
+
+    window.addEventListener('drop', (e) => {
+        if (!isFileDragEvent(e)) return;
+        e.preventDefault();
+        dragCounter = 0;
+        isFileDrag = false;
+        document.body.classList.remove('drag-active');
+        
+        // Handle the drop
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            addFilesToQueue(Array.from(e.dataTransfer.files));
+            switchToUpload(); // Ensure we are on the upload tab
+        }
+    });
+}

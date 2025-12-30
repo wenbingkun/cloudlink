@@ -178,6 +178,15 @@ npm run deploy
 | `DRIVE_FOLDER_ID` | Google Drive 文件夹 ID | `1BxiMVs0...` |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | 服务账号邮箱 | `xxx@xxx.iam.gserviceaccount.com` |
 | `GOOGLE_PRIVATE_KEY` | 服务账号私钥 | `-----BEGIN PRIVATE KEY-----...` |
+| `AUTH_TOKEN_SECRET` | 管理员Token签名密钥 | `random-32-char-secret` |
+| `ALLOWED_ORIGINS` | 允许的跨域来源（逗号分隔） | `https://files.example.com` |
+| `STORAGE_PROVIDER` | 存储提供者类型 | `google-drive` |
+| `REQUIRE_SHARE_TOKEN` | 是否强制分享链接下载 | `false` |
+| `MAX_SHARE_TTL_SECONDS` | 分享链接最大有效期（秒） | `604800` |
+| `RATE_LIMIT_WINDOW_MS` | 限流时间窗口（毫秒） | `60000` |
+| `MAX_UPLOAD_REQUESTS_PER_MIN` | 上传接口限流次数/分钟 | `10` |
+| `MAX_ADMIN_REQUESTS_PER_MIN` | 管理接口限流次数/分钟 | `10` |
+| `MAX_CHUNK_REQUESTS_PER_MIN` | 分块上传限流次数/分钟 | `100` |
 
 ### 安全设置
 
@@ -194,18 +203,41 @@ npm run deploy
 cloudlink/
 ├── src/
 │   ├── index.js              # 主入口文件
-│   ├── google-drive-api.js   # Google Drive API 封装
-│   ├── upload-handler.js     # 文件上传处理 (支持分块上传)
-│   ├── download-handler.js   # 文件下载处理
-│   ├── admin-handler.js      # 管理功能处理 (Token认证)
-│   ├── auth-manager.js       # 认证管理器 (新增)
-│   ├── utils.js              # 工具函数
-│   └── pages/
-│       ├── upload-page.js    # 上传页面 (多文件支持)
-│       └── admin-page.js     # 管理页面 (搜索筛选)
+│   ├── config.js             # 环境配置解析
+│   ├── core/
+│   │   ├── auth/
+│   │   │   └── auth-manager.js  # 认证管理器
+│   │   ├── handlers/
+│   │   │   ├── upload.js        # 文件上传处理 (支持分块上传)
+│   │   │   ├── chunked-upload.js # 分块上传处理
+│   │   │   ├── download.js      # 文件下载处理
+│   │   │   ├── admin.js         # 管理功能处理 (Token认证)
+│   │   │   └── share.js         # 分享链接处理
+│   │   └── utils/
+│   │       ├── helpers.js       # 工具函数
+│   │       ├── rate-limiter.js  # 限流逻辑
+│   │       └── share-utils.js   # 分享工具
+│   └── storage/
+│       ├── factory.js           # 存储适配器工厂
+│       ├── provider-interface.js # 存储接口定义
+│       └── providers/
+│           └── google-drive/
+│               ├── api-client.js # Google Drive API 封装
+│               └── index.js      # Google Drive Provider
+├── public/
+│   ├── index.html            # 前端页面
+│   ├── js/
+│   │   └── client.js         # 前端逻辑
+│   ├── css/
+│   │   └── styles.css        # 样式
+│   └── assets/
+│       └── favicon.svg       # 图标
 ├── wrangler.toml             # Cloudflare 配置
 ├── package.json              # 项目配置
-└── README.md                 # 项目文档
+├── SETUP.md                  # 配置说明
+├── README.md                 # 项目文档
+├── AGENTS.md                 # 协作指南
+└── GEMINI.md                 # 运行说明
 ```
 
 ### API 路由
@@ -217,6 +249,8 @@ cloudlink/
 | `POST` | `/chunked-upload/start` | 开始分块上传 |
 | `PUT` | `/chunked-upload/chunk/:sessionId` | 上传文件块 |
 | `GET` | `/d/:fileId` | 文件下载 |
+| `POST` | `/share/create` | 创建分享链接（需管理员Token） |
+| `GET` | `/s/:token` | 通过分享链接下载（可选验证码） |
 | `GET` | `/admin` | 管理后台 (增强UI) |
 | `POST` | `/admin/login` | 管理员登录 (Token认证) |
 | `POST` | `/admin/verify-token` | Token验证 (新增) |
