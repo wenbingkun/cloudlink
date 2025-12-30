@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - `src/`: Cloudflare Worker logic (request routing, upload/download, admin, rate limiting).
-- `public/`: Static assets served by the Worker (`index.html`, `js/client.js`, `css/styles.css`, `assets/favicon.svg`).
+- `public/`: Static assets served by the Worker (`index.html`, `js/app.js`, `css/styles.css`, `assets/favicon.svg`).
 - `wrangler.toml`: Worker configuration and runtime variables.
 - `README.md` / `SETUP.md`: setup steps and environment configuration details.
 

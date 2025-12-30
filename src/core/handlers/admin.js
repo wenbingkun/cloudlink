@@ -3,7 +3,7 @@ import { buildCorsHeaders } from '../utils/helpers.js';
 
 const authManager = new ServerAuthManager();
 
-export async function handleAdmin(request, env, driveAPI, path, url) {
+export async function handleAdmin(request, env, storageProvider, path, url) {
   try {
     const corsHeaders = buildCorsHeaders(request, env);
     // 移除独立的admin页面路由，现在使用统一界面
@@ -93,7 +93,7 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
       const pageToken = url.searchParams.get('pageToken');
       const pageSize = parseInt(url.searchParams.get('pageSize') || '20');
 
-      const result = await driveAPI.listFiles(env.DRIVE_FOLDER_ID, pageSize, pageToken);
+      const result = await storageProvider.listFiles(env.DRIVE_FOLDER_ID, pageSize, pageToken);
       
       const files = result.files.map(file => ({
         id: file.id,
@@ -136,7 +136,7 @@ export async function handleAdmin(request, env, driveAPI, path, url) {
         });
       }
 
-      const success = await driveAPI.deleteFile(fileId);
+      const success = await storageProvider.deleteFile(fileId);
       
       if (success) {
         return new Response(JSON.stringify({ success: true }), {

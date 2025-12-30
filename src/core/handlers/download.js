@@ -1,6 +1,6 @@
 import { buildCorsHeaders } from '../utils/helpers.js';
 
-export async function handleDownload(request, env, driveAPI, path, options = {}) {
+export async function handleDownload(request, env, storageProvider, path, options = {}) {
   try {
     const corsHeaders = buildCorsHeaders(request, env);
     const fileId = path.substring(3);
@@ -14,17 +14,17 @@ export async function handleDownload(request, env, driveAPI, path, options = {})
     }
 
     // 获取文件信息
-    const fileInfo = await driveAPI.getFileInfo(fileId);
+    const fileInfo = await storageProvider.getFileInfo(fileId);
     
     // 检查是否支持范围请求
     const rangeHeader = request.headers.get('Range');
     
     if (rangeHeader) {
       // 处理范围请求（用于大文件分段下载）
-      return handleRangeDownload(request, env, driveAPI, fileId, fileInfo, rangeHeader);
+      return handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader);
     } else {
       // 普通下载
-      return handleNormalDownload(request, env, driveAPI, fileId, fileInfo);
+      return handleNormalDownload(request, env, storageProvider, fileId, fileInfo);
     }
 
   } catch (error) {
@@ -36,9 +36,9 @@ export async function handleDownload(request, env, driveAPI, path, options = {})
   }
 }
 
-async function handleNormalDownload(request, env, driveAPI, fileId, fileInfo) {
+async function handleNormalDownload(request, env, storageProvider, fileId, fileInfo) {
   const corsHeaders = buildCorsHeaders(request, env);
-  const fileResponse = await driveAPI.downloadFile(fileId);
+  const fileResponse = await storageProvider.downloadFile(fileId);
   
   if (fileResponse.ok) {
     const headers = {
@@ -56,7 +56,7 @@ async function handleNormalDownload(request, env, driveAPI, fileId, fileInfo) {
   }
 }
 
-async function handleRangeDownload(request, env, driveAPI, fileId, fileInfo, rangeHeader) {
+async function handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader) {
   const corsHeaders = buildCorsHeaders(request, env);
   // 解析范围请求 Range: bytes=start-end
   const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
@@ -80,7 +80,7 @@ async function handleRangeDownload(request, env, driveAPI, fileId, fileInfo, ran
 
   try {
     // 使用 Google Drive API 的范围下载
-    const rangeResponse = await driveAPI.downloadFileRange(fileId, start, end);
+    const rangeResponse = await storageProvider.downloadFileRange(fileId, start, end);
     
     if (rangeResponse.ok) {
       const headers = {

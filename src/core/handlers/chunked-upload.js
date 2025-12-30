@@ -7,22 +7,22 @@ const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks (保守策略)
 const MIN_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB minimum
 const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2MB maximum
 
-export async function handleChunkedUpload(request, env, driveAPI, path, url) {
+export async function handleChunkedUpload(request, env, storageProvider, path, url) {
   const corsHeaders = buildCorsHeaders(request, env);
   const segments = path.split('/');
   
   if (segments[2] === 'start' && request.method === 'POST') {
-    return handleUploadStart(request, env, driveAPI, url, corsHeaders);
+    return handleUploadStart(request, env, storageProvider, url, corsHeaders);
   }
   
   if (segments[2] === 'chunk' && request.method === 'PUT') {
     const sessionId = segments[3];
-    return handleChunkUpload(request, env, driveAPI, sessionId, url, corsHeaders);
+    return handleChunkUpload(request, env, storageProvider, sessionId, url, corsHeaders);
   }
   
   if (segments[2] === 'status' && request.method === 'GET') {
     const sessionId = segments[3];
-    return handleUploadStatus(request, env, driveAPI, sessionId, url, corsHeaders);
+    return handleUploadStatus(request, env, storageProvider, sessionId, url, corsHeaders);
   }
   
   return new Response('Invalid chunked upload endpoint', { 
@@ -68,7 +68,7 @@ async function verifySessionToken(request, session, env) {
   return result === 0;
 }
 
-async function handleUploadStart(request, env, driveAPI, url, corsHeaders) {
+async function handleUploadStart(request, env, storageProvider, url, corsHeaders) {
   try {
     const data = await request.json();
     const { fileName, fileSize, password, chunkSize: requestedChunkSize } = data;
@@ -114,7 +114,7 @@ async function handleUploadStart(request, env, driveAPI, url, corsHeaders) {
     const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_\u4e00-\u9fa5]/g, '_');
 
     // 5. 启动 Google Drive resumable upload
-    const uploadUrl = await driveAPI.startResumableUpload(
+    const uploadUrl = await storageProvider.startResumableUpload(
       safeFileName, 
       fileSize, 
       env.DRIVE_FOLDER_ID
@@ -163,7 +163,7 @@ async function handleUploadStart(request, env, driveAPI, url, corsHeaders) {
   }
 }
 
-async function handleChunkUpload(request, env, driveAPI, sessionId, url, corsHeaders) {
+async function handleChunkUpload(request, env, storageProvider, sessionId, url, corsHeaders) {
   let chunkData = null;
   try {
     const sessionData = await env.UPLOAD_SESSIONS.get(sessionId);
@@ -213,7 +213,7 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url, corsHea
     chunkData = await request.arrayBuffer();
     
     // 超时控制
-    const uploadPromise = driveAPI.uploadChunk(session.uploadUrl, chunkData, start, total);
+    const uploadPromise = storageProvider.uploadChunk(session.uploadUrl, chunkData, start, total);
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Upload Timeout')), 60000));
     
     const result = await Promise.race([uploadPromise, timeoutPromise]);
@@ -246,7 +246,7 @@ async function handleChunkUpload(request, env, driveAPI, sessionId, url, corsHea
   }
 }
 
-async function handleUploadStatus(request, env, driveAPI, sessionId, url, corsHeaders) {
+async function handleUploadStatus(request, env, storageProvider, sessionId, url, corsHeaders) {
   const sessionData = await env.UPLOAD_SESSIONS.get(sessionId);
   if (!sessionData) return new Response(JSON.stringify({ error: 'Not Found' }), { status: 404, headers: corsHeaders });
   
@@ -258,7 +258,7 @@ async function handleUploadStatus(request, env, driveAPI, sessionId, url, corsHe
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
-  const status = await driveAPI.checkUploadStatus(session.uploadUrl, session.fileSize);
+  const status = await storageProvider.checkUploadStatus(session.uploadUrl, session.fileSize);
 
   if (status.completed) {
     await env.UPLOAD_SESSIONS.delete(sessionId);

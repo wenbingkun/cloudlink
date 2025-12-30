@@ -44,7 +44,7 @@ function buildShareHtml(url, token, error) {
 </html>`;
 }
 
-export async function handleShare(request, env, driveAPI, path, url) {
+export async function handleShare(request, env, storageProvider, path, url) {
   const corsHeaders = buildCorsHeaders(request, env);
   if (!env.SHARE_LINKS) {
     return new Response(JSON.stringify({ error: '分享功能未配置KV存储' }), {
@@ -59,7 +59,7 @@ export async function handleShare(request, env, driveAPI, path, url) {
 
   if (path.startsWith('/s/') && request.method === 'GET') {
     const token = path.substring('/s/'.length);
-    return handleShareAccess(request, env, driveAPI, token, url, corsHeaders);
+    return handleShareAccess(request, env, storageProvider, token, url, corsHeaders);
   }
 
   return new Response('Not found', { status: 404, headers: corsHeaders });
@@ -152,7 +152,7 @@ async function handleShareCreate(request, env, url, corsHeaders) {
   }
 }
 
-async function handleShareAccess(request, env, driveAPI, token, url, corsHeaders) {
+async function handleShareAccess(request, env, storageProvider, token, url, corsHeaders) {
   if (!token) {
     return new Response('无效的分享链接', { status: 400, headers: corsHeaders });
   }
@@ -198,5 +198,5 @@ async function handleShareAccess(request, env, driveAPI, token, url, corsHeaders
 
   const downloadPath = `/d/${shareRecord.fileId}`;
   const downloadRequest = new Request(new URL(downloadPath, url.origin), request);
-  return handleDownload(downloadRequest, env, driveAPI, downloadPath, { bypassShareCheck: true });
+  return handleDownload(downloadRequest, env, storageProvider, downloadPath, { bypassShareCheck: true });
 }

@@ -49,7 +49,7 @@ cloudlink/
 ├── public/                       # Static assets (served via Worker)
 │   ├── index.html
 │   ├── js/
-│   │   └── client.js
+│   │   └── app.js
 │   ├── css/
 │   │   └── styles.css
 │   └── assets/

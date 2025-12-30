@@ -75,7 +75,7 @@ async function testCorsAllowlist() {
 async function testUiAssets() {
   const html = fs.readFileSync(path.resolve('public/index.html'), 'utf8');
   const css = fs.readFileSync(path.resolve('public/css/styles.css'), 'utf8');
-  const client = fs.readFileSync(path.resolve('public/js/client.js'), 'utf8');
+  const client = fs.readFileSync(path.resolve('public/js/app.js'), 'utf8');
 
   assert.ok(html.includes('global-drag-overlay'), 'global drag overlay should exist in HTML');
   assert.ok(html.includes('fab-container'), 'FAB container should exist in HTML');
@@ -87,7 +87,7 @@ async function testUiAssets() {
 }
 
 async function testUiInteractionsStatic() {
-  const client = fs.readFileSync(path.resolve('public/js/client.js'), 'utf8');
+  const client = fs.readFileSync(path.resolve('public/js/app.js'), 'utf8');
 
   assert.ok(
     /pointerdown[\s\S]*isDragging\s*=\s*false/.test(client),

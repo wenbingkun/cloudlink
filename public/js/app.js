@@ -1,24 +1,17 @@
+import { state, resetAdminState } from './state.js';
+import { loginAdmin, listFiles, deleteFile } from './api.js';
+import { parsePositiveInt, formatTime, getFileType, clearElement, buildFileInfo } from './utils.js';
+import { renderFileQueue, renderFiles, updateSelectedActions, updateUploadButton } from './ui/render.js';
+import { initDraggableFAB } from './ui/fab.js';
+import { initGlobalDrag } from './ui/drag.js';
+import { showToast, showPasswordModal, hidePasswordModal, confirmPassword, showConfirmModal, hideConfirmModal, confirmAction } from './ui/modal.js';
+
 // =================================================================================
 // CloudLink Client-Side Application
 // =================================================================================
 
-// --- Global State ---
-let authManager = null;
-let fileQueue = [];
-let isUploading = false;
-let uploadPassword = null; // Cache upload password for the session
-let nextPageToken = null; // For admin file pagination
-let allFiles = []; // For admin file list
-let filteredFiles = [];
-let selectedFiles = new Set();
-
 // --- Constants (allow override via window.CLOUDLINK_CONFIG) ---
 const CLOUDLINK_CONFIG = window.CLOUDLINK_CONFIG || {};
-
-const parsePositiveInt = (value, fallback) => {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
 
 const CHUNK_UPLOAD_THRESHOLD = parsePositiveInt(
     CLOUDLINK_CONFIG.chunkUploadThreshold,
@@ -51,11 +44,11 @@ document.addEventListener('DOMContentLoaded', function() {
     checkAuthStatus();
     switchToUpload();
     initDraggableFAB();
-    initGlobalDrag();
+    initGlobalDrag({ addFilesToQueue, switchToUpload });
 });
 
 function initAuthManager() {
-    authManager = {
+    state.authManager = {
         tokenKey: 'cloudlink_auth_token',
         tokenExpiry: 'cloudlink_token_expiry',
         sessionDuration: 24 * 60 * 60 * 1000, // 24 hours
@@ -182,7 +175,7 @@ function initEventListeners() {
 }
 
 function checkAuthStatus() {
-    if (authManager.isAuthenticated()) {
+    if (state.authManager.isAuthenticated()) {
         showToast('已自动登录', 'success');
     }
 }
@@ -209,7 +202,7 @@ function switchToUpload() {
 }
 
 function switchToAdmin() {
-    if (authManager.isAuthenticated()) {
+    if (state.authManager.isAuthenticated()) {
         document.getElementById('admin-section').classList.add('active');
         loadFiles(true); // Reset and load files
     } else {
@@ -223,14 +216,8 @@ async function handleLogin(e) {
     if (!adminPasswordInput) return;
     const password = adminPasswordInput.value;
     try {
-        const response = await fetch('/admin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        });
-        if (!response.ok) throw new Error((await response.json()).error || '登录失败');
-        const data = await response.json();
-        authManager.saveAuth(data.token); // Save the token received from the server
+        const data = await loginAdmin(password);
+        state.authManager.saveAuth(data.token);
         showToast('🎉 登录成功', 'success');
         switchToAdmin();
     } catch (error) {
@@ -256,7 +243,7 @@ function handleDrop(e) {
 function addFilesToQueue(files) {
     files.forEach(file => {
         const fileId = Date.now() + Math.random();
-        fileQueue.push({
+        state.fileQueue.push({
             id: fileId,
             file: file,
             name: file.name,
@@ -272,26 +259,26 @@ function addFilesToQueue(files) {
             avgSpeed: 0,
         });
     });
-    renderFileQueue();
-    updateUploadButton();
+    renderFileQueue(state, getRenderCallbacks());
+    updateUploadButton(state);
 }
 
 async function startUpload() {
-    const pendingFiles = fileQueue.filter(f => f.status === 'pending');
+    const pendingFiles = state.fileQueue.filter(f => f.status === 'pending');
     if (pendingFiles.length === 0) return;
 
     // 认证检查：已登录管理员可直接上传，未登录需要上传密码
-    if (!authManager.isAuthenticated() && !uploadPassword) {
+    if (!state.authManager.isAuthenticated() && !state.uploadPassword) {
         try {
-            uploadPassword = await showPasswordModal();
+            state.uploadPassword = await showPasswordModal();
         } catch {
             showToast('上传已取消', 'info');
             return;
         }
     }
     
-    isUploading = true;
-    updateUploadButton();
+    state.isUploading = true;
+    updateUploadButton(state);
     const uploadSessionStartTime = Date.now();
 
     // 控制并发上传数量防止HTTP 500错误
@@ -302,12 +289,12 @@ async function startUpload() {
         await Promise.all(batchPromises);
     }
 
-    isUploading = false;
-    updateUploadButton();
+    state.isUploading = false;
+    updateUploadButton(state);
 
     const totalTime = Date.now() - uploadSessionStartTime;
-    const successCount = fileQueue.filter(f => f.status === 'success').length;
-    const errorCount = fileQueue.filter(f => f.status === 'error').length;
+    const successCount = state.fileQueue.filter(f => f.status === 'success').length;
+    const errorCount = state.fileQueue.filter(f => f.status === 'error').length;
 
     if (successCount > 0) {
         showToast(`上传完成！${successCount}个文件成功，总用时 ${formatTime(totalTime / 1000)}`, 'success');
@@ -321,7 +308,7 @@ async function uploadFile(fileObj) {
     fileObj.status = 'uploading';
     fileObj.isPaused = false;
     fileObj.startTime = Date.now();
-    renderFileQueue();
+    renderFileQueue(state, getRenderCallbacks());
 
     try {
         if (fileObj.file.size < CHUNK_UPLOAD_THRESHOLD) {
@@ -342,7 +329,7 @@ async function uploadFile(fileObj) {
             fileObj.error = error.message;
         }
     } finally {
-        renderFileQueue();
+        renderFileQueue(state, getRenderCallbacks());
     }
 }
 
@@ -353,10 +340,10 @@ async function uploadSmallFile(fileObj) {
     formData.append('file', fileObj.file, fileObj.name);
     
     const headers = {};
-    if (authManager.isAuthenticated()) {
-        headers['Authorization'] = `Bearer ${authManager.getCurrentToken()}`;
+    if (state.authManager.isAuthenticated()) {
+        headers['Authorization'] = `Bearer ${state.authManager.getCurrentToken()}`;
     } else {
-        formData.append('password', uploadPassword);
+        formData.append('password', state.uploadPassword);
     }
 
     const xhr = new XMLHttpRequest();
@@ -378,7 +365,7 @@ async function uploadSmallFile(fileObj) {
                     fileObj.peakSpeed = fileObj.uploadSpeed;
                 }
                 
-                renderFileQueue();
+                renderFileQueue(state, getRenderCallbacks());
             }
         });
 
@@ -411,10 +398,10 @@ async function uploadLargeFile(fileObj) {
         };
         
         // 根据认证状态选择认证方式
-        if (authManager.isAuthenticated()) {
-            headers['Authorization'] = `Bearer ${authManager.getCurrentToken()}`;
+        if (state.authManager.isAuthenticated()) {
+            headers['Authorization'] = `Bearer ${state.authManager.getCurrentToken()}`;
         } else {
-            body.password = uploadPassword;
+            body.password = state.uploadPassword;
         }
         
         const startResponse = await fetch('/chunked-upload/start', {
@@ -437,13 +424,13 @@ async function uploadLargeFile(fileObj) {
         // Handle pause
         if (fileObj.isPaused) {
             fileObj.status = 'paused';
-            renderFileQueue();
+            renderFileQueue(state, getRenderCallbacks());
             // This promise will resolve when user clicks resume
             await new Promise(resolve => {
                 fileObj.resumeHandler = resolve;
             });
             fileObj.status = 'uploading';
-            renderFileQueue();
+            renderFileQueue(state, getRenderCallbacks());
         }
 
         const end = Math.min(start + CHUNK_SIZE, fileObj.size);
@@ -473,7 +460,7 @@ async function uploadLargeFile(fileObj) {
                         }
                         fileObj.progress = Math.round((currentUploaded / fileObj.size) * 100);
                         fileObj.uploadedBytes = currentUploaded;
-                        renderFileQueue();
+                        renderFileQueue(state, getRenderCallbacks());
 
                         lastProgressTime = currentTime;
                         lastUploadedBytes = currentUploaded;
@@ -518,7 +505,7 @@ async function uploadLargeFile(fileObj) {
 }
 
 function togglePause(fileId) {
-    const fileObj = fileQueue.find(f => f.id === fileId);
+    const fileObj = state.fileQueue.find(f => f.id === fileId);
     if (!fileObj || (fileObj.status !== 'uploading' && fileObj.status !== 'paused')) return;
 
     fileObj.isPaused = !fileObj.isPaused;
@@ -527,237 +514,24 @@ function togglePause(fileId) {
         fileObj.resumeHandler(); // Resolve the promise to continue the loop
         fileObj.resumeHandler = null;
     }
-    renderFileQueue();
-}
-
-// =================================================================================
-// DOM & UI Rendering
-// =================================================================================
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function createSvg(attrs, children = []) {
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    Object.entries(attrs).forEach(([key, value]) => svg.setAttribute(key, value));
-    children.forEach((child) => {
-        const element = document.createElementNS(SVG_NS, child.type);
-        Object.entries(child.attrs).forEach(([key, value]) => element.setAttribute(key, value));
-        svg.appendChild(element);
-    });
-    return svg;
-}
-
-function createFileTypeIcon(mimeType) {
-    const type = getFileType(mimeType);
-    switch (type) {
-        case 'image':
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'rect', attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' } },
-                    { type: 'circle', attrs: { cx: '8.5', cy: '8.5', r: '1.5' } },
-                    { type: 'polyline', attrs: { points: '21 15 16 10 5 21' } }
-                ]
-            );
-        case 'video':
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'polygon', attrs: { points: '23 7 16 12 23 17 23 7' } },
-                    { type: 'rect', attrs: { x: '1', y: '5', width: '15', height: '14', rx: '2', ry: '2' } }
-                ]
-            );
-        case 'audio':
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'path', attrs: { d: 'M9 18V5l12-2v13' } },
-                    { type: 'circle', attrs: { cx: '6', cy: '18', r: '3' } },
-                    { type: 'circle', attrs: { cx: '18', cy: '16', r: '3' } }
-                ]
-            );
-        case 'document':
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'path', attrs: { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' } },
-                    { type: 'polyline', attrs: { points: '14 2 14 8 20 8' } },
-                    { type: 'line', attrs: { x1: '16', y1: '13', x2: '8', y2: '13' } },
-                    { type: 'line', attrs: { x1: '16', y1: '17', x2: '8', y2: '17' } },
-                    { type: 'polyline', attrs: { points: '10 9 9 9 8 9' } }
-                ]
-            );
-        case 'archive':
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'line', attrs: { x1: '10', y1: '1', x2: '10', y2: '5' } },
-                    { type: 'line', attrs: { x1: '14', y1: '1', x2: '14', y2: '5' } },
-                    { type: 'path', attrs: { d: 'M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8' } },
-                    { type: 'path', attrs: { d: 'M4 12h16' } },
-                    { type: 'path', attrs: { d: 'M10 5h4' } },
-                    { type: 'path', attrs: { d: 'M12 5v14' } }
-                ]
-            );
-        default:
-            return createSvg(
-                { xmlns: SVG_NS, width: '24', height: '24', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'path', attrs: { d: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z' } }
-                ]
-            );
-    }
-}
-
-function renderFileQueue() {
-    const container = document.getElementById('fileQueue');
-    if (fileQueue.length === 0) {
-        container.replaceChildren();
-        updateUploadButton();
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    fileQueue.forEach(fileObj => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.dataset.fileId = fileObj.id;
-
-        // Icon
-        const iconDiv = document.createElement('div');
-        iconDiv.className = 'file-item-icon';
-        iconDiv.appendChild(createFileTypeIcon(fileObj.file.type));
-        item.appendChild(iconDiv);
-
-        // Info
-        const infoDiv = document.createElement('div');
-        infoDiv.className = 'file-item-info';
-        
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'file-name';
-        nameDiv.textContent = fileObj.name; // Safe XSS prevention
-        infoDiv.appendChild(nameDiv);
-
-        const metaDiv = document.createElement('div');
-        metaDiv.className = 'file-meta';
-        
-        const sizeSpan = document.createElement('span');
-        sizeSpan.textContent = formatFileSize(fileObj.size);
-        metaDiv.appendChild(sizeSpan);
-
-        const statusSpan = document.createElement('span');
-        let statusText = '';
-        switch (fileObj.status) {
-            case 'pending': statusText = '等待上传'; break;
-            case 'uploading': statusText = `上传中... ${fileObj.progress}%`; break;
-            case 'paused': statusText = `已暂停 ${fileObj.progress}%`; break;
-            case 'success': statusText = '上传成功'; break;
-            case 'error': statusText = '上传失败'; break;
-        }
-        statusSpan.textContent = statusText;
-        metaDiv.appendChild(statusSpan);
-        infoDiv.appendChild(metaDiv);
-
-        if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-            const progressBar = document.createElement('div');
-            progressBar.className = 'progress-bar';
-            const progressFill = document.createElement('div');
-            progressFill.className = 'progress-fill';
-            progressFill.style.width = `${fileObj.progress}%`;
-            progressBar.appendChild(progressFill);
-            infoDiv.appendChild(progressBar);
-        }
-        item.appendChild(infoDiv);
-
-        // Actions
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'file-item-actions';
-        
-        if (fileObj.status === 'pending') {
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-secondary';
-            btn.textContent = '移除';
-            btn.onclick = () => removeFromQueue(fileObj.id);
-            actionsDiv.appendChild(btn);
-        } else if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-secondary';
-            btn.textContent = fileObj.isPaused ? '继续' : '暂停';
-            btn.onclick = () => togglePause(fileObj.id);
-            actionsDiv.appendChild(btn);
-        } else if (fileObj.status === 'success') {
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-secondary';
-            btn.textContent = '复制链接';
-            btn.onclick = () => copyToClipboard(fileObj.downloadUrl);
-            actionsDiv.appendChild(btn);
-        }
-        item.appendChild(actionsDiv);
-
-        // Success Info (Input)
-        if (fileObj.status === 'success' && fileObj.downloadUrl) {
-            const successDiv = document.createElement('div');
-            successDiv.className = 'success-info';
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'download-link-input';
-            input.value = fileObj.downloadUrl;
-            input.readOnly = true;
-            successDiv.appendChild(input);
-            item.appendChild(successDiv);
-        }
-
-        // Error Info
-        if (fileObj.status === 'error' && fileObj.error) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'file-error';
-            errorDiv.textContent = fileObj.error; // Safe
-            item.appendChild(errorDiv);
-        }
-
-        fragment.appendChild(item);
-    });
-    container.replaceChildren(fragment);
-}
-
-function updateUploadButton() {
-    const uploadControls = document.getElementById('uploadControls');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const pendingCount = fileQueue.filter(f => f.status === 'pending').length;
-    
-    // 显示或隐藏上传控制按钮
-    if (fileQueue.length > 0) {
-        uploadControls.style.display = 'flex';
-    } else {
-        uploadControls.style.display = 'none';
-    }
-    
-    // 更新按钮状态和文本
-    if (uploadBtn) {
-        uploadBtn.disabled = pendingCount === 0 || isUploading;
-        
-        if (isUploading) {
-            uploadBtn.textContent = '上传中...';
-        } else {
-            uploadBtn.textContent = `开始上传 (${pendingCount})`;
-        }
-    }
+    renderFileQueue(state, getRenderCallbacks());
 }
 
 function removeFromQueue(fileId) {
-    fileQueue = fileQueue.filter(f => f.id !== fileId);
-    renderFileQueue();
-    updateUploadButton();
+    state.fileQueue = state.fileQueue.filter(f => f.id !== fileId);
+    renderFileQueue(state, getRenderCallbacks());
+    updateUploadButton(state);
 }
 
 function clearQueue() {
-    const uploadingFiles = fileQueue.filter(f => f.status === 'uploading' || f.status === 'paused');
+    const uploadingFiles = state.fileQueue.filter(f => f.status === 'uploading' || f.status === 'paused');
     if (uploadingFiles.length > 0) {
         showToast('有文件正在上传，无法清空队列', 'info');
         return;
     }
-    fileQueue = [];
-    renderFileQueue();
-    updateUploadButton();
+    state.fileQueue = [];
+    renderFileQueue(state, getRenderCallbacks());
+    updateUploadButton(state);
 }
 
 function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('dragover'); }
@@ -765,25 +539,19 @@ function handleDragLeave(e) { e.currentTarget.classList.remove('dragover'); }
 
 async function loadFiles(reset = false) {
     if (reset) {
-        allFiles = [];
-        filteredFiles = [];
-        selectedFiles.clear();
-        nextPageToken = null;
+        resetAdminState();
         document.getElementById('filesGrid').replaceChildren();
     }
     const loadMoreBtn = document.getElementById('loadMoreBtn');
     loadMoreBtn.disabled = true;
     loadMoreBtn.textContent = '加载中...';
     try {
-        const token = authManager.getCurrentToken();
-        const url = nextPageToken ? `/admin/files?pageToken=${nextPageToken}` : '/admin/files';
-        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!response.ok) throw new Error('无法加载文件列表');
-        const data = await response.json();
-        allFiles.push(...data.files);
-        nextPageToken = data.nextPageToken;
+        const token = state.authManager.getCurrentToken();
+        const data = await listFiles(token, state.nextPageToken);
+        state.allFiles.push(...data.files);
+        state.nextPageToken = data.nextPageToken;
         updateFileList();
-        loadMoreBtn.classList.toggle('hidden', !nextPageToken);
+        loadMoreBtn.classList.toggle('hidden', !state.nextPageToken);
     } catch (error) {
         showToast(error.message, 'error');
     } finally {
@@ -800,7 +568,7 @@ function handleFilter() {
     
     const type = typeFilter ? typeFilter.value : '';
     const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-    let tempFiles = allFiles;
+    let tempFiles = state.allFiles;
     
     if (type) {
         tempFiles = tempFiles.filter(file => getFileType(file.mimeType) === type);
@@ -808,127 +576,68 @@ function handleFilter() {
     if (searchTerm) {
         tempFiles = tempFiles.filter(file => file.name.toLowerCase().includes(searchTerm));
     }
-    filteredFiles = tempFiles;
+    state.filteredFiles = tempFiles;
     handleSort();
 }
 function handleSort() {
     const sortByElement = document.getElementById('sortBy');
     const sortBy = sortByElement ? sortByElement.value : 'time';
     
-    filteredFiles.sort((a, b) => {
+    state.filteredFiles.sort((a, b) => {
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'size') return b.size - a.size;
         return new Date(b.createdTime) - new Date(a.createdTime);
     });
-    renderFiles();
+    renderFiles(state, getRenderCallbacks());
 }
 
-function renderFiles() {
-    const grid = document.getElementById('filesGrid');
-    const fragment = document.createDocumentFragment();
+function getStatusText(fileObj) {
+    switch (fileObj.status) {
+        case 'pending': return '等待上传';
+        case 'uploading': return `上传中... ${fileObj.progress}%`;
+        case 'paused': return `已暂停 ${fileObj.progress}%`;
+        case 'success': return '上传成功';
+        case 'error': return '上传失败';
+        default: return '';
+    }
+}
 
-    filteredFiles.forEach(file => {
-        const card = document.createElement('div');
-        card.className = `file-card ${selectedFiles.has(file.id) ? 'selected' : ''}`;
-        card.dataset.fileId = file.id;
-        card.onclick = () => handleFileSelectToggle(file.id);
-
-        // Icon
-        const iconDiv = document.createElement('div');
-        iconDiv.className = 'file-card-icon';
-        iconDiv.appendChild(createFileTypeIcon(file.mimeType));
-        card.appendChild(iconDiv);
-
-        // Info
-        const infoDiv = document.createElement('div');
-        infoDiv.className = 'file-card-info';
-        
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'file-card-name';
-        nameDiv.textContent = file.name; // Safe XSS prevention
-        infoDiv.appendChild(nameDiv);
-
-        const metaDiv = document.createElement('div');
-        metaDiv.className = 'file-card-meta';
-        
-        const sizeSpan = document.createElement('span');
-        sizeSpan.textContent = formatFileSize(file.size);
-        metaDiv.appendChild(sizeSpan);
-
-        const dateSpan = document.createElement('span');
-        dateSpan.textContent = new Date(file.createdTime).toLocaleDateString();
-        metaDiv.appendChild(dateSpan);
-        
-        infoDiv.appendChild(metaDiv);
-        card.appendChild(infoDiv);
-
-        // Actions
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'file-card-actions';
-
-        const previewBtn = document.createElement('button');
-        previewBtn.className = 'btn-secondary';
-        previewBtn.textContent = '预览';
-        previewBtn.onclick = (e) => { e.stopPropagation(); previewFile(file.id, file.name, file.mimeType); };
-        actionsDiv.appendChild(previewBtn);
-
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'btn-secondary';
-        copyBtn.textContent = '复制';
-        copyBtn.onclick = (e) => { e.stopPropagation(); copyToClipboard(`${window.location.origin}/d/${file.id}`); };
-        actionsDiv.appendChild(copyBtn);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn-secondary';
-        deleteBtn.textContent = '删除';
-        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteSingleFile(file.id); };
-        actionsDiv.appendChild(deleteBtn);
-
-        card.appendChild(actionsDiv);
-        fragment.appendChild(card);
-    });
-
-    grid.replaceChildren(fragment);
-    
-    // 更新删除选中按钮的显示状态
-    updateSelectedActions();
+function getRenderCallbacks() {
+    return {
+        removeFromQueue,
+        togglePause,
+        copyToClipboard,
+        previewFile,
+        deleteSingleFile,
+        updateSelectedActions: () => updateSelectedActions(state),
+        updateUploadButton: () => updateUploadButton(state),
+        getStatusText
+    };
 }
 
 function handleFileSelectToggle(fileId) {
-    if (selectedFiles.has(fileId)) {
-        selectedFiles.delete(fileId);
+    if (state.selectedFiles.has(fileId)) {
+        state.selectedFiles.delete(fileId);
     } else {
-        selectedFiles.add(fileId);
+        state.selectedFiles.add(fileId);
     }
     document.querySelector(`.file-card[data-file-id='${fileId}']`).classList.toggle('selected');
-    updateSelectedActions();
-}
-
-function updateSelectedActions() {
-    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-    if (deleteSelectedBtn) {
-        if (selectedFiles.size > 0) {
-            deleteSelectedBtn.style.display = 'inline-flex';
-            deleteSelectedBtn.textContent = `删除选中 (${selectedFiles.size})`;
-        } else {
-            deleteSelectedBtn.style.display = 'none';
-        }
-    }
+    updateSelectedActions(state);
 }
 
 function selectAll() {
-    filteredFiles.forEach(file => selectedFiles.add(file.id));
-    renderFiles();
+    state.filteredFiles.forEach(file => state.selectedFiles.add(file.id));
+    renderFiles(state, getRenderCallbacks());
 }
 function deselectAll() {
-    selectedFiles.clear();
-    renderFiles();
+    state.selectedFiles.clear();
+    renderFiles(state, getRenderCallbacks());
 }
 async function deleteSelected() {
-    if (selectedFiles.size === 0) return;
-    const confirmed = await showConfirmModal(`确定要删除选中的 ${selectedFiles.size} 个文件吗？`);
+    if (state.selectedFiles.size === 0) return;
+    const confirmed = await showConfirmModal(`确定要删除选中的 ${state.selectedFiles.size} 个文件吗？`);
     if (confirmed) {
-        const ids = Array.from(selectedFiles);
+        const ids = Array.from(state.selectedFiles);
         showToast(`正在删除 ${ids.length} 个文件...`, 'info');
         let successCount = 0;
         for (const id of ids) {
@@ -951,32 +660,12 @@ async function deleteSingleFile(fileId) {
 }
 async function deleteFileAPI(fileId) {
     try {
-        const response = await fetch(`/admin/delete/${fileId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${authManager.getCurrentToken()}` }
-        });
-        if (!response.ok) throw new Error('删除失败');
+        await deleteFile(state.authManager.getCurrentToken(), fileId);
         return true;
     } catch (error) {
         showToast(error.message, 'error');
         return false;
     }
-}
-
-// --- Helper & Utility Functions ---
-function formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}
-function formatTime(seconds) {
-    if (seconds < 0 || !isFinite(seconds)) return '0s';
-    if (seconds < 60) return `${seconds.toFixed(1)}s`;
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}m ${s}s`;
 }
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板', 'success'), () => showToast('复制失败', 'error'));
@@ -1199,176 +888,6 @@ function handleAudioError(audio, fileName, mimeType) {
     }
     
     showToast('音频格式不受支持，请下载后播放', 'info');
-}
-
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-
-    const icon = createToastIcon(type);
-    const text = document.createElement('span');
-    text.textContent = message;
-    toast.appendChild(icon);
-    toast.appendChild(text);
-    
-    container.appendChild(toast);
-    
-    // 自动移除Toast
-    setTimeout(() => {
-        if (toast && toast.parentNode) {
-            toast.style.animation = 'toastSlideOut 0.3s ease-in forwards';
-            setTimeout(() => {
-                if (toast && toast.parentNode) {
-                    toast.remove();
-                }
-            }, 300);
-        }
-    }, 3000);
-}
-
-function showPasswordModal() {
-    return new Promise((resolve, reject) => {
-        const modal = document.getElementById('passwordModal');
-        const input = document.getElementById('modalPasswordInput');
-        if (!modal || !input) return;
-        
-        input.value = '';
-        
-        const enterListener = (e) => {
-            if (e.key === 'Enter') {
-                confirmPassword();
-                input.removeEventListener('keydown', enterListener);
-            }
-        };
-        input.addEventListener('keydown', enterListener);
-
-        modal.style.display = 'flex';
-        input.focus();
-        
-        window.passwordModalResolve = resolve;
-        window.passwordModalReject = reject;
-    });
-}
-function hidePasswordModal() {
-    const modal = document.getElementById('passwordModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-    if (window.passwordModalReject) {
-        window.passwordModalReject();
-    }
-    window.passwordModalResolve = null;
-    window.passwordModalReject = null;
-}
-function confirmPassword() {
-    const modalPasswordInput = document.getElementById('modalPasswordInput');
-    if (!modalPasswordInput) return;
-    const password = modalPasswordInput.value;
-    if (password && window.passwordModalResolve) {
-        window.passwordModalResolve(password);
-    } else if (!password) {
-        // Maybe show a small error message on the modal itself
-    }
-    hidePasswordModal();
-}
-function showConfirmModal(message) {
-    return new Promise((resolve) => {
-        const modal = document.getElementById('confirmModal');
-        const confirmMessage = document.getElementById('confirmMessage');
-        if (!modal || !confirmMessage) return;
-        confirmMessage.textContent = message;
-        modal.style.display = 'flex';
-        window.confirmModalResolve = resolve;
-    });
-}
-function hideConfirmModal() {
-    const modal = document.getElementById('confirmModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-function confirmAction() {
-    if (window.confirmModalResolve) {
-        window.confirmModalResolve(true);
-    }
-    hideConfirmModal();
-}
-function getFileType(mimeType) {
-    if (!mimeType) return 'other';
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf')) return 'document';
-    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z') || mimeType.includes('x-gtar') || mimeType.includes('x-tar')) return 'archive';
-    if (mimeType.startsWith('text/') || mimeType.includes('document')) return 'document';
-    return 'other';
-}
-
-function clearElement(element) {
-    element.replaceChildren();
-}
-
-function buildFileInfo({ fileName, mimeType, message }) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'file-info';
-
-    const icon = document.createElement('div');
-    icon.className = 'file-icon';
-    icon.style.cssText = 'font-size: 4rem; margin-bottom: 1rem; color: var(--color-primary);';
-    icon.appendChild(createFileTypeIcon(mimeType));
-    wrapper.appendChild(icon);
-
-    const title = document.createElement('h3');
-    title.textContent = fileName;
-    wrapper.appendChild(title);
-
-    if (mimeType) {
-        const typePara = document.createElement('p');
-        typePara.textContent = `文件类型：${mimeType}`;
-        wrapper.appendChild(typePara);
-    }
-
-    if (message) {
-        const messagePara = document.createElement('p');
-        messagePara.textContent = message;
-        wrapper.appendChild(messagePara);
-    }
-
-    return wrapper;
-}
-
-function createToastIcon(type) {
-    switch (type) {
-        case 'success':
-            return createSvg(
-                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'path', attrs: { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14' } },
-                    { type: 'polyline', attrs: { points: '22 4 12 14.01 9 11.01' } }
-                ]
-            );
-        case 'error':
-            return createSvg(
-                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'circle', attrs: { cx: '12', cy: '12', r: '10' } },
-                    { type: 'line', attrs: { x1: '12', y1: '8', x2: '12', y2: '12' } },
-                    { type: 'line', attrs: { x1: '12', y1: '16', x2: '12.01', y2: '16' } }
-                ]
-            );
-        default:
-            return createSvg(
-                { xmlns: SVG_NS, width: '20', height: '20', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-                [
-                    { type: 'circle', attrs: { cx: '12', cy: '12', r: '10' } },
-                    { type: 'line', attrs: { x1: '12', y1: '16', x2: '12', y2: '12' } },
-                    { type: 'line', attrs: { x1: '12', y1: '8', x2: '12.01', y2: '8' } }
-                ]
-            );
-    }
 }
 
 // =================================================================================

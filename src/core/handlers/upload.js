@@ -3,7 +3,7 @@ import { buildCorsHeaders } from '../utils/helpers.js';
 
 const authManager = new ServerAuthManager();
 
-export async function handleUpload(request, env, driveAPI, url) {
+export async function handleUpload(request, env, storageProvider, url) {
   const corsHeaders = buildCorsHeaders(request, env);
   try {
     const formData = await request.formData();
@@ -66,7 +66,7 @@ export async function handleUpload(request, env, driveAPI, url) {
     const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_\u4e00-\u9fa5]/g, '_');
 
     const fileBuffer = await file.arrayBuffer();
-    const uploadResult = await driveAPI.uploadFile(
+    const uploadResult = await storageProvider.uploadFile(
       safeFileName,
       fileBuffer,
       env.DRIVE_FOLDER_ID

@@ -1,0 +1,38 @@
+name = "cloudlink"
+main = "src/index.js"
+compatibility_date = "2024-01-15"
+
+# KV 存储绑定用于持久化上传会话
+[[kv_namespaces]]
+binding = "UPLOAD_SESSIONS"
+preview_id = "0add2e2994ab4b49aead9cb8a57836ea"
+id = "084265f6541d4d3aaac83316d16be8c0"
+
+[[kv_namespaces]]
+binding = "SHARE_LINKS"
+preview_id = "00000000000000000000000000000000"
+id = "00000000000000000000000000000000"
+
+# Static assets serving
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+UPLOAD_PASSWORD = "change-me"
+ADMIN_PASSWORD = "change-me"
+DRIVE_FOLDER_ID = "your-drive-folder-id"
+MAX_FILE_SIZE = "2147483648"  # 2GB in bytes
+ALLOWED_EXTENSIONS = "jpg,jpeg,png,gif,webp,svg,bmp,tiff,pdf,doc,docx,ppt,pptx,xls,xlsx,csv,rtf,txt,md,json,xml,html,css,js,zip,rar,7z,tar,gz,mp4,mp3,wav,flac,avi,mov,mkv,lrc,srt,ass,ssa,vtt,sub"
+ALLOWED_ORIGINS = "http://localhost:8787"
+REQUIRE_SHARE_TOKEN = "false"
+MAX_SHARE_TTL_SECONDS = "604800" # 7 days
+RATE_LIMIT_WINDOW_MS = "60000"
+MAX_UPLOAD_REQUESTS_PER_MIN = "10"
+MAX_ADMIN_REQUESTS_PER_MIN = "10"
+MAX_CHUNK_REQUESTS_PER_MIN = "100"
+
+# 敏感信息通过 wrangler secret 命令设置
+# wrangler secret put GOOGLE_SERVICE_ACCOUNT_EMAIL
+# wrangler secret put GOOGLE_PRIVATE_KEY
+# wrangler secret put AUTH_TOKEN_SECRET
