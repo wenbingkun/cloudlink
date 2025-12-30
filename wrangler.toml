@@ -5,13 +5,13 @@ compatibility_date = "2025-12-30"
 # KV 存储绑定用于持久化上传会话
 [[kv_namespaces]]
 binding = "UPLOAD_SESSIONS"
-preview_id = "your-preview-kv-id"
-id = "your-kv-id"
+preview_id = "0add2e2994ab4b49aead9cb8a57836ea"
+id = "084265f6541d4d3aaac83316d16be8c0"
 
 [[kv_namespaces]]
 binding = "SHARE_LINKS"
-preview_id = "your-preview-kv-id"
-id = "your-kv-id"
+preview_id = "c99dc1ec367c494284ef304814f65067"
+id = "c99dc1ec367c494284ef304814f65067"
 
 # Static assets serving
 [assets]
