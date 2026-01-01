@@ -106,7 +106,13 @@ function initUI() {
 
     // 2. Event Listeners
     document.getElementById('auth-btn')?.addEventListener('click', window.toggleLoginModal);
-    document.getElementById('file-input')?.addEventListener('change', (e) => {
+
+    // File input and drop zone
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
+
+    dropZone?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', (e) => {
         addFilesToQueue(Array.from(e.target.files));
         e.target.value = '';
     });
