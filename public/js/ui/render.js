@@ -117,18 +117,11 @@ export function renderFiles(state, callbacks) {
         // Action Buttons
         const actions = document.createElement('div');
         actions.className = 'card-actions';
-        actions.style.cssText = `
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid var(--glass-border);
-        `;
 
         let hasActions = false;
 
         if (callbacks.copyLink) {
-            const copyBtn = createActionButton('📋', '复制链接', () => {
+            const copyBtn = createActionButton('📋', '链接', () => {
                 callbacks.copyLink(file.id);
             });
             actions.appendChild(copyBtn);
@@ -144,7 +137,7 @@ export function renderFiles(state, callbacks) {
         }
 
         if (callbacks.renameFile) {
-            const renameBtn = createActionButton('✏️', '重命名', () => {
+            const renameBtn = createActionButton('✏️', '改名', () => {
                 callbacks.renameFile(file.id, file.name);
             });
             actions.appendChild(renameBtn);
@@ -185,18 +178,26 @@ function createActionButton(icon, label, onClick) {
     const button = document.createElement('button');
     button.className = 'glass-btn';
     button.type = 'button';
-    button.textContent = icon;
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = icon;
+    iconSpan.setAttribute('aria-hidden', 'true');
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+
+    button.appendChild(iconSpan);
+    button.appendChild(labelSpan);
     button.setAttribute('aria-label', label);
     button.title = label;
     button.style.cssText = `
-        flex: 1;
-        min-width: 44px;
+        width: 100%;
         height: 36px;
         border-radius: 12px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 1rem;
+        gap: 6px;
+        font-size: 0.8rem;
     `;
     button.addEventListener('click', (e) => {
         e.stopPropagation();
