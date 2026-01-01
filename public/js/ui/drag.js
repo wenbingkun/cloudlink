@@ -1,6 +1,5 @@
 export function initGlobalDrag(callbacks) {
-    const { addFilesToQueue, toggleUploadPanel } = callbacks;
-    const uploadPanel = document.getElementById('upload-panel');
+    const { addFilesToQueue } = callbacks;
     let dragCounter = 0;
 
     window.addEventListener('dragenter', (e) => {
@@ -25,10 +24,6 @@ export function initGlobalDrag(callbacks) {
         document.body.classList.remove('drag-active');
 
         if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-            // Ensure upload panel is open
-            if (uploadPanel && !uploadPanel.classList.contains('active')) {
-                toggleUploadPanel();
-            }
             addFilesToQueue(Array.from(e.dataTransfer.files));
         }
     });
