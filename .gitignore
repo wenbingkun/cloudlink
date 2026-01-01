@@ -12,3 +12,6 @@ wrangler.toml
 
 # Keep .claude directory but it's optional to commit
 # .claude/
+
+# Local Claude Code instructions
+CLAUDE.md
