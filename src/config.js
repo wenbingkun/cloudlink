@@ -7,7 +7,7 @@ export function getConfig(env) {
     authTokenSecret: env.AUTH_TOKEN_SECRET,
     allowedOrigins: env.ALLOWED_ORIGINS,
     requireShareToken: env.REQUIRE_SHARE_TOKEN === 'true',
-    maxShareTtlSeconds: parseInt(env.MAX_SHARE_TTL_SECONDS || '604800'),
+    maxShareTtlSeconds: parseInt(env.MAX_SHARE_TTL_HOURS || '168') * 3600,
     maxFileSize: parseInt(env.MAX_FILE_SIZE || '2147483648'),
     allowedExtensions: env.ALLOWED_EXTENSIONS,
     rateLimitWindowMs: parseInt(env.RATE_LIMIT_WINDOW_MS || '60000'),

@@ -98,11 +98,8 @@ async function handleShareCreate(request, env, url, corsHeaders) {
       });
     }
 
-    const maxTtlSeconds = parsePositiveInt(env.MAX_SHARE_TTL_SECONDS, 604800);
-    const expiresInSeconds = Math.min(
-      parsePositiveInt(payload.expiresInSeconds, 86400),
-      maxTtlSeconds
-    );
+    const maxTtlHours = parsePositiveInt(env.MAX_SHARE_TTL_HOURS, 168);
+    const expiresInSeconds = maxTtlHours * 3600;
     if (!expiresInSeconds || expiresInSeconds <= 0) {
       return new Response(JSON.stringify({ error: '无效的过期时间' }), {
         status: 400,
