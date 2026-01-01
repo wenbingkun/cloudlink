@@ -2,9 +2,16 @@ export function initLiquidDock(callbacks) {
     const uploadTrigger = document.getElementById('upload-trigger');
     const fileInput = document.getElementById('file-input');
     if (!uploadTrigger || !fileInput) return;
+    const toggleUploadPanel = callbacks && callbacks.toggleUploadPanel;
 
     // Click to open file picker directly
-    uploadTrigger.addEventListener('click', () => fileInput.click());
+    uploadTrigger.addEventListener('click', () => {
+        if (typeof toggleUploadPanel === 'function') {
+            toggleUploadPanel();
+        } else {
+            fileInput.click();
+        }
+    });
 
     // Add micro-interactions for the liquid dock
     uploadTrigger.addEventListener('pointerdown', () => {
