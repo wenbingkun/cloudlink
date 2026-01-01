@@ -81,7 +81,7 @@ async function testUiAssets() {
   assert.ok(html.includes('liquid-dock'), 'liquid dock should exist in HTML');
   assert.ok(html.includes('upload-panel'), 'upload panel should exist in HTML');
   assert.ok(html.includes('login-modal'), 'login modal should exist in HTML');
-  assert.ok(html.includes('drop-zone'), 'drop zone should exist in HTML');
+  assert.ok(html.includes('file-input'), 'file input should exist in HTML');
   assert.ok(html.includes('file-grid'), 'file grid should exist in HTML');
   assert.ok(html.includes('toast-container'), 'toast container should exist in HTML');
   assert.ok(css.includes('.liquid-btn'), 'liquid button styles should exist');

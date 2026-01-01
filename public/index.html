@@ -76,10 +76,7 @@
                 <h3>Upload Files</h3>
                 <button class="close-btn" onclick="toggleUploadPanel()">×</button>
             </div>
-            <div id="drop-zone" class="drop-zone">
-                <p>Drag & Drop or Click to Select</p>
-                <input type="file" id="file-input" multiple hidden>
-            </div>
+            <input type="file" id="file-input" webkitdirectory directory multiple hidden>
             <div id="upload-queue" class="upload-queue"></div>
         </div>
         

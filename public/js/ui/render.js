@@ -83,12 +83,17 @@ export function renderFiles(state, callbacks) {
     state.allFiles.forEach(file => {
         const card = document.createElement('div');
         card.className = 'file-card';
+        card.addEventListener('click', () => {
+            if (card.dataset.suppressClick === 'true') {
+                card.dataset.suppressClick = '';
+                return;
+            }
+            callbacks.previewFile(file.id, file.name, file.mimeType);
+        });
 
-        // Preview Area (clickable for preview)
+        // Preview Area
         const preview = document.createElement('div');
         preview.className = 'card-preview';
-        preview.onclick = () => callbacks.previewFile(file.id, file.name, file.mimeType);
-
         if (file.mimeType && file.mimeType.startsWith('image/')) {
             const img = document.createElement('img');
             img.src = `/d/${file.id}`;
@@ -114,48 +119,55 @@ export function renderFiles(state, callbacks) {
 
         card.appendChild(info);
 
-        // Action Buttons
-        const actions = document.createElement('div');
-        actions.className = 'card-actions';
-
-        let hasActions = false;
-
-        if (callbacks.copyLink) {
-            const copyBtn = createActionButton('📋', '链接', () => {
-                callbacks.copyLink(file.id);
+        const openMenu = (x, y) => {
+            showContextMenu({
+                x,
+                y,
+                file,
+                callbacks
             });
-            actions.appendChild(copyBtn);
-            hasActions = true;
-        }
+        };
 
-        if (callbacks.downloadFile) {
-            const downloadBtn = createActionButton('⬇️', '下载', () => {
-                callbacks.downloadFile(file.id);
-            });
-            actions.appendChild(downloadBtn);
-            hasActions = true;
-        }
+        card.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            openMenu(event.clientX, event.clientY);
+        });
 
-        if (callbacks.renameFile) {
-            const renameBtn = createActionButton('✏️', '改名', () => {
-                callbacks.renameFile(file.id, file.name);
-            });
-            actions.appendChild(renameBtn);
-            hasActions = true;
-        }
+        let pressTimer = null;
+        let pressStartX = 0;
+        let pressStartY = 0;
 
-        if (callbacks.deleteFile) {
-            const deleteBtn = createActionButton('🗑️', '删除', () => {
-                callbacks.deleteFile(file.id, file.name);
-            });
-            deleteBtn.style.color = '#ef4444';
-            actions.appendChild(deleteBtn);
-            hasActions = true;
-        }
+        const clearPress = () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
 
-        if (hasActions) {
-            card.appendChild(actions);
-        }
+        card.addEventListener('touchstart', (event) => {
+            if (!event.touches || event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            pressStartX = touch.clientX;
+            pressStartY = touch.clientY;
+            clearPress();
+            pressTimer = setTimeout(() => {
+                card.dataset.suppressClick = 'true';
+                openMenu(touch.clientX, touch.clientY);
+            }, 500);
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (event) => {
+            if (!event.touches || event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            const deltaX = Math.abs(touch.clientX - pressStartX);
+            const deltaY = Math.abs(touch.clientY - pressStartY);
+            if (deltaX > 10 || deltaY > 10) {
+                clearPress();
+            }
+        }, { passive: true });
+
+        card.addEventListener('touchend', clearPress);
+        card.addEventListener('touchcancel', clearPress);
 
         fragment.appendChild(card);
     });
@@ -174,36 +186,62 @@ function getFileIconChar(mimeType) {
     return '📄';
 }
 
-function createActionButton(icon, label, onClick) {
-    const button = document.createElement('button');
-    button.className = 'glass-btn';
-    button.type = 'button';
-    const iconSpan = document.createElement('span');
-    iconSpan.textContent = icon;
-    iconSpan.setAttribute('aria-hidden', 'true');
+function ensureContextMenu() {
+    let menu = document.getElementById('contextMenu');
+    if (menu) return menu;
 
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = label;
+    menu = document.createElement('div');
+    menu.id = 'contextMenu';
+    menu.className = 'context-menu hidden';
+    document.body.appendChild(menu);
 
-    button.appendChild(iconSpan);
-    button.appendChild(labelSpan);
-    button.setAttribute('aria-label', label);
-    button.title = label;
-    button.style.cssText = `
-        width: 100%;
-        height: 36px;
-        border-radius: 12px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        font-size: 0.8rem;
-    `;
-    button.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onClick();
+    document.addEventListener('click', () => hideContextMenu());
+    window.addEventListener('resize', () => hideContextMenu());
+    window.addEventListener('scroll', () => hideContextMenu(), true);
+
+    return menu;
+}
+
+function hideContextMenu() {
+    const menu = document.getElementById('contextMenu');
+    if (menu) {
+        menu.classList.add('hidden');
+        menu.innerHTML = '';
+    }
+}
+
+function showContextMenu({ x, y, file, callbacks }) {
+    const menu = ensureContextMenu();
+    menu.innerHTML = '';
+
+    const items = [
+        callbacks.copyLink ? { label: '复制分享链接', action: () => callbacks.copyLink(file.id) } : null,
+        callbacks.renameFile ? { label: '重命名', action: () => callbacks.renameFile(file.id, file.name) } : null,
+        callbacks.deleteFile ? { label: '删除文件', action: () => callbacks.deleteFile(file.id, file.name), danger: true } : null,
+    ].filter(Boolean);
+
+    items.forEach((item) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `context-menu-item${item.danger ? ' danger' : ''}`;
+        button.textContent = item.label;
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            hideContextMenu();
+            item.action();
+        });
+        menu.appendChild(button);
     });
-    return button;
+
+    const padding = 12;
+    const menuWidth = 180;
+    const menuHeight = items.length * 44 + 12;
+    const maxX = window.innerWidth - menuWidth - padding;
+    const maxY = window.innerHeight - menuHeight - padding;
+
+    menu.style.left = `${Math.max(padding, Math.min(x, maxX))}px`;
+    menu.style.top = `${Math.max(padding, Math.min(y, maxY))}px`;
+    menu.classList.remove('hidden');
 }
 
 export function updateSelectedActions(state) {

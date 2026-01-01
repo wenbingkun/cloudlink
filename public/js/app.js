@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Modules
     initGlobalDrag({ addFilesToQueue });
-    initLiquidDock({ toggleUploadPanel: window.toggleUploadPanel });
+    initLiquidDock();
     
     if (state.authManager.isAuthenticated()) {
         document.getElementById('auth-btn')?.classList.add('auth-active');
