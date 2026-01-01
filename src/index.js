@@ -57,6 +57,9 @@ export default {
     if (path.startsWith('/css/') || path.startsWith('/js/') || path.startsWith('/assets/')) {
         return env.ASSETS.fetch(request);
     }
+    if (path === '/styles.css') {
+        return env.ASSETS.fetch(request);
+    }
     if (path === '/favicon.svg') {
         return env.ASSETS.fetch(new Request(url.origin + '/assets/favicon.svg', request));
     }
