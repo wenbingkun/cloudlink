@@ -1,203 +1,148 @@
-import { createFileTypeIcon, formatFileSize } from '../utils.js';
+import { formatFileSize, getFileType } from '../utils.js';
 
 export function renderFileQueue(state, callbacks) {
-  const container = document.getElementById('fileQueue');
-  if (!container) return;
-
-  if (state.fileQueue.length === 0) {
-    container.replaceChildren();
-    if (callbacks.updateUploadButton) callbacks.updateUploadButton();
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  state.fileQueue.forEach((fileObj) => {
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.dataset.fileId = fileObj.id;
-
-    const iconDiv = document.createElement('div');
-    iconDiv.className = 'file-item-icon';
-    iconDiv.appendChild(createFileTypeIcon(fileObj.file.type));
-    item.appendChild(iconDiv);
-
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'file-item-info';
-
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'file-name';
-    nameDiv.textContent = fileObj.name;
-    infoDiv.appendChild(nameDiv);
-
-    const metaDiv = document.createElement('div');
-    metaDiv.className = 'file-meta';
-
-    const sizeSpan = document.createElement('span');
-    sizeSpan.textContent = formatFileSize(fileObj.size);
-    metaDiv.appendChild(sizeSpan);
-
-    const statusSpan = document.createElement('span');
-    statusSpan.textContent = callbacks.getStatusText(fileObj);
-    metaDiv.appendChild(statusSpan);
-    infoDiv.appendChild(metaDiv);
-
-    if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-      const progressBar = document.createElement('div');
-      progressBar.className = 'progress-bar';
-      const progressFill = document.createElement('div');
-      progressFill.className = 'progress-fill';
-      progressFill.style.width = `${fileObj.progress}%`;
-      progressBar.appendChild(progressFill);
-      infoDiv.appendChild(progressBar);
-    }
-    item.appendChild(infoDiv);
-
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'file-item-actions';
-
-    if (fileObj.status === 'pending') {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-secondary';
-      btn.textContent = '移除';
-      btn.onclick = () => callbacks.removeFromQueue(fileObj.id);
-      actionsDiv.appendChild(btn);
-    } else if (fileObj.status === 'uploading' || fileObj.status === 'paused') {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-secondary';
-      btn.textContent = fileObj.isPaused ? '继续' : '暂停';
-      btn.onclick = () => callbacks.togglePause(fileObj.id);
-      actionsDiv.appendChild(btn);
-    } else if (fileObj.status === 'success') {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-secondary';
-      btn.textContent = '复制链接';
-      btn.onclick = () => callbacks.copyToClipboard(fileObj.downloadUrl);
-      actionsDiv.appendChild(btn);
-    }
-    item.appendChild(actionsDiv);
-
-    if (fileObj.status === 'success' && fileObj.downloadUrl) {
-      const successDiv = document.createElement('div');
-      successDiv.className = 'success-info';
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'download-link-input';
-      input.value = fileObj.downloadUrl;
-      input.readOnly = true;
-      successDiv.appendChild(input);
-      item.appendChild(successDiv);
+    const container = document.getElementById('upload-queue');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (state.fileQueue.length === 0) {
+        return;
     }
 
-    if (fileObj.status === 'error' && fileObj.error) {
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'file-error';
-      errorDiv.textContent = fileObj.error;
-      item.appendChild(errorDiv);
-    }
+    const fragment = document.createDocumentFragment();
+    
+    state.fileQueue.forEach(fileObj => {
+        const item = document.createElement('div');
+        item.className = 'queue-item';
+        // Inline styles for queue items (since they are dynamic)
+        item.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+        `;
 
-    fragment.appendChild(item);
-  });
+        // Icon
+        const icon = document.createElement('div');
+        icon.textContent = getFileIconChar(fileObj.file.type);
+        icon.style.fontSize = '1.5rem';
+        item.appendChild(icon);
 
-  container.replaceChildren(fragment);
-}
+        // Info
+        const info = document.createElement('div');
+        info.style.flex = '1';
+        
+        const name = document.createElement('div');
+        name.textContent = fileObj.name;
+        name.style.cssText = 'font-size: 0.9rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;';
+        info.appendChild(name);
 
-export function updateUploadButton(state) {
-  const uploadControls = document.getElementById('uploadControls');
-  const uploadBtn = document.getElementById('uploadBtn');
-  if (!uploadControls || !uploadBtn) return;
+        const progressContainer = document.createElement('div');
+        progressContainer.style.cssText = 'height: 4px; background: rgba(0,0,0,0.1); border-radius: 2px; margin-top: 6px; overflow: hidden;';
+        
+        const bar = document.createElement('div');
+        bar.style.cssText = `height: 100%; background: var(--btn-primary); width: ${fileObj.progress}%; transition: width 0.3s;`;
+        progressContainer.appendChild(bar);
+        info.appendChild(progressContainer);
+        
+        item.appendChild(info);
 
-  const pendingCount = state.fileQueue.filter((f) => f.status === 'pending').length;
+        // Status
+        const status = document.createElement('div');
+        status.textContent = fileObj.status === 'success' ? '✓' : (fileObj.progress + '%');
+        status.style.cssText = 'font-size: 0.8rem; color: var(--text-muted); min-width: 30px; text-align: right;';
+        item.appendChild(status);
 
-  uploadControls.style.display = state.fileQueue.length > 0 ? 'flex' : 'none';
-  uploadBtn.disabled = pendingCount === 0 || state.isUploading;
-  uploadBtn.textContent = state.isUploading ? '上传中...' : `开始上传 (${pendingCount})`;
+        fragment.appendChild(item);
+    });
+
+    container.appendChild(fragment);
 }
 
 export function renderFiles(state, callbacks) {
-  const grid = document.getElementById('filesGrid');
-  if (!grid) return;
+    const grid = document.getElementById('file-grid');
+    if (!grid) return;
+    
+    grid.innerHTML = ''; // Clear existing
 
-  const fragment = document.createDocumentFragment();
+    if (state.allFiles.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📂</div>
+                <p>No files uploaded yet</p>
+            </div>`;
+        return;
+    }
 
-  state.filteredFiles.forEach((file) => {
-    const card = document.createElement('div');
-    card.className = `file-card ${state.selectedFiles.has(file.id) ? 'selected' : ''}`;
-    card.dataset.fileId = file.id;
-    card.onclick = () => callbacks.toggleSelect(file.id);
+    const fragment = document.createDocumentFragment();
 
-    const iconDiv = document.createElement('div');
-    iconDiv.className = 'file-card-icon';
-    iconDiv.appendChild(createFileTypeIcon(file.mimeType));
-    card.appendChild(iconDiv);
+    state.allFiles.forEach(file => {
+        const card = document.createElement('div');
+        card.className = 'file-card';
+        card.onclick = () => callbacks.previewFile(file.id, file.name, file.mimeType);
 
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'file-card-info';
+        // Preview Area
+        const preview = document.createElement('div');
+        preview.className = 'card-preview';
+        
+        if (file.mimeType.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = `/d/${file.id}`;
+            img.loading = 'lazy';
+            img.onerror = () => { img.style.display = 'none'; preview.textContent = '🖼️'; };
+            preview.appendChild(img);
+        } else {
+            preview.textContent = getFileIconChar(file.mimeType);
+        }
+        card.appendChild(preview);
 
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'file-card-name';
-    nameDiv.textContent = file.name;
-    infoDiv.appendChild(nameDiv);
+        // Info Area
+        const info = document.createElement('div');
+        info.className = 'card-info';
+        
+        const title = document.createElement('h4');
+        title.textContent = file.name;
+        info.appendChild(title);
 
-    const metaDiv = document.createElement('div');
-    metaDiv.className = 'file-card-meta';
+        const meta = document.createElement('span');
+        meta.textContent = formatFileSize(file.size);
+        info.appendChild(meta);
+        
+        card.appendChild(info);
 
-    const sizeSpan = document.createElement('span');
-    sizeSpan.textContent = formatFileSize(file.size);
-    metaDiv.appendChild(sizeSpan);
+        // Right Click / Long Press Menu (Simplified for now as click actions)
+        card.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if(confirm(`Delete ${file.name}?`)) {
+                callbacks.deleteFile(file.id);
+            }
+        });
 
-    const dateSpan = document.createElement('span');
-    dateSpan.textContent = new Date(file.createdTime).toLocaleDateString();
-    metaDiv.appendChild(dateSpan);
+        fragment.appendChild(card);
+    });
 
-    infoDiv.appendChild(metaDiv);
-    card.appendChild(infoDiv);
+    grid.appendChild(fragment);
+}
 
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'file-card-actions';
-
-    const previewBtn = document.createElement('button');
-    previewBtn.className = 'btn-secondary';
-    previewBtn.textContent = '预览';
-    previewBtn.onclick = (e) => {
-      e.stopPropagation();
-      callbacks.previewFile(file.id, file.name, file.mimeType);
-    };
-    actionsDiv.appendChild(previewBtn);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'btn-secondary';
-    copyBtn.textContent = '复制';
-    copyBtn.onclick = (e) => {
-      e.stopPropagation();
-      callbacks.copyToClipboard(`${window.location.origin}/d/${file.id}`);
-    };
-    actionsDiv.appendChild(copyBtn);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-secondary';
-    deleteBtn.textContent = '删除';
-    deleteBtn.onclick = (e) => {
-      e.stopPropagation();
-      callbacks.deleteSingleFile(file.id);
-    };
-    actionsDiv.appendChild(deleteBtn);
-
-    card.appendChild(actionsDiv);
-    fragment.appendChild(card);
-  });
-
-  grid.replaceChildren(fragment);
-  callbacks.updateSelectedActions();
+// Helper
+function getFileIconChar(mimeType) {
+    if (!mimeType) return '📄';
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType.startsWith('video/')) return '🎬';
+    if (mimeType.startsWith('audio/')) return '🎵';
+    if (mimeType.includes('pdf')) return '📕';
+    if (mimeType.includes('zip') || mimeType.includes('compressed')) return '📦';
+    return '📄';
 }
 
 export function updateSelectedActions(state) {
-  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-  if (!deleteSelectedBtn) return;
+    // No-op for this version, we use context menus
+}
 
-  if (state.selectedFiles.size > 0) {
-    deleteSelectedBtn.style.display = 'inline-flex';
-    deleteSelectedBtn.textContent = `删除选中 (${state.selectedFiles.size})`;
-  } else {
-    deleteSelectedBtn.style.display = 'none';
-  }
+export function updateUploadButton(state) {
+    // No-op, button is liquid
 }

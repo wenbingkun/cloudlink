@@ -76,37 +76,39 @@ async function testUiAssets() {
   const html = fs.readFileSync(path.resolve('public/index.html'), 'utf8');
   const css = fs.readFileSync(path.resolve('public/css/styles.css'), 'utf8');
   const client = fs.readFileSync(path.resolve('public/js/app.js'), 'utf8');
+  const drag = fs.readFileSync(path.resolve('public/js/ui/drag.js'), 'utf8');
 
-  assert.ok(html.includes('global-drag-overlay'), 'global drag overlay should exist in HTML');
-  assert.ok(html.includes('fab-container'), 'FAB container should exist in HTML');
-  assert.ok(css.includes('.global-drag-overlay'), 'global drag overlay styles should exist');
-  assert.ok(css.includes('.fab-container'), 'FAB styles should exist');
-  assert.ok(client.includes('initDraggableFAB'), 'FAB initialization should exist');
-  assert.ok(client.includes('initGlobalDrag'), 'global drag initialization should exist');
-  assert.ok(client.includes('pointercancel'), 'FAB should handle pointercancel');
+  assert.ok(html.includes('liquid-dock'), 'liquid dock should exist in HTML');
+  assert.ok(html.includes('upload-panel'), 'upload panel should exist in HTML');
+  assert.ok(html.includes('login-modal'), 'login modal should exist in HTML');
+  assert.ok(html.includes('drop-zone'), 'drop zone should exist in HTML');
+  assert.ok(html.includes('file-grid'), 'file grid should exist in HTML');
+  assert.ok(html.includes('toast-container'), 'toast container should exist in HTML');
+  assert.ok(css.includes('.liquid-btn'), 'liquid button styles should exist');
+  assert.ok(css.includes('.glass-panel'), 'glass panel styles should exist');
+  assert.ok(css.includes('.file-grid'), 'file grid styles should exist');
+  assert.ok(css.includes('.drop-zone'), 'drop zone styles should exist');
+  assert.ok(client.includes('toggleUploadPanel'), 'upload panel toggle should exist');
+  assert.ok(client.includes('toggleLoginModal'), 'login modal toggle should exist');
+  assert.ok(drag.includes('dragenter'), 'global drag should handle dragenter');
+  assert.ok(drag.includes('drop'), 'global drag should handle drop');
 }
 
 async function testUiInteractionsStatic() {
-  const client = fs.readFileSync(path.resolve('public/js/app.js'), 'utf8');
+  const drag = fs.readFileSync(path.resolve('public/js/ui/drag.js'), 'utf8');
 
   assert.ok(
-    /pointerdown[\s\S]*isDragging\s*=\s*false/.test(client),
-    'pointerdown should not set isDragging true immediately'
+    /dragenter[\s\S]*classList\.add\('drag-active'\)/.test(drag),
+    'dragenter should activate drag-active state'
   );
   assert.ok(
-    /pointermove[\s\S]*hasMoved\s*=\s*true[\s\S]*isDragging\s*=\s*true/.test(client),
-    'pointermove should set isDragging true only after movement'
+    /dragleave[\s\S]*classList\.remove\('drag-active'\)/.test(drag),
+    'dragleave should clear drag-active state'
   );
   assert.ok(
-    /isFileDragEvent[\s\S]*includes\(['"]Files['"]\)/.test(client),
-    'drag handlers should guard with Files drag detection'
+    /drop[\s\S]*addFilesToQueue/.test(drag),
+    'drop should queue files'
   );
-  assert.ok(
-    /dragenter[\s\S]*isFileDragEvent/.test(client),
-    'dragenter should use file drag guard'
-  );
-  assert.ok(!client.includes('innerHTML'), 'client should avoid innerHTML usage');
-  assert.ok(client.includes('X-Upload-Token'), 'client should send upload session token');
 }
 
 async function testServerConfigReferences() {

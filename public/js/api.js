@@ -5,11 +5,11 @@ export async function loginAdmin(password) {
     body: JSON.stringify({ password })
   });
 
+  const data = await response.json();
   if (!response.ok) {
-    const data = await response.json();
     throw new Error(data.error || '登录失败');
   }
-  return response.json();
+  return data;
 }
 
 export async function listFiles(token, nextPageToken) {
