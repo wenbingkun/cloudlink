@@ -21,8 +21,6 @@ binding = "ASSETS"
 [vars]
 MAX_FILE_SIZE = "2147483648"  # 2GB in bytes
 ALLOWED_EXTENSIONS = "jpg,jpeg,png,gif,webp,svg,bmp,tiff,pdf,doc,docx,ppt,pptx,xls,xlsx,csv,rtf,txt,md,json,xml,html,css,js,zip,rar,7z,tar,gz,mp4,mp3,wav,flac,avi,mov,mkv,lrc,srt,ass,ssa,vtt,sub"
-ALLOWED_ORIGINS = "http://localhost:8787"
-REQUIRE_SHARE_TOKEN = "false"
 MAX_SHARE_TTL_SECONDS = "604800" # 7 days
 RATE_LIMIT_WINDOW_MS = "60000"
 MAX_UPLOAD_REQUESTS_PER_MIN = "10"
@@ -36,3 +34,5 @@ MAX_CHUNK_REQUESTS_PER_MIN = "100"
 # wrangler secret put UPLOAD_PASSWORD
 # wrangler secret put ADMIN_PASSWORD
 # DRIVE_FOLDER_ID 请在 Cloudflare 控制台环境变量中配置
+# ALLOWED_ORIGINS 请在 Cloudflare 控制台环境变量中配置
+# REQUIRE_SHARE_TOKEN 请在 Cloudflare 控制台环境变量中配置
