@@ -194,11 +194,18 @@ export function hideConfirmModal() {
   const modal = document.getElementById('confirmModal');
   modal.classList.remove('active');
   setTimeout(() => modal.classList.add('hidden'), 300);
+  if (window.confirmModalResolve) {
+    window.confirmModalResolve(false);
+  }
+  window.confirmModalResolve = null;
 }
 
 export function confirmAction() {
   if (window.confirmModalResolve) {
     window.confirmModalResolve(true);
   }
-  hideConfirmModal();
+  window.confirmModalResolve = null;
+  const modal = document.getElementById('confirmModal');
+  modal.classList.remove('active');
+  setTimeout(() => modal.classList.add('hidden'), 300);
 }

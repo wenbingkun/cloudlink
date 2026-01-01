@@ -114,12 +114,10 @@ export function renderFiles(state, callbacks) {
         
         card.appendChild(info);
 
-        // Right Click / Long Press Menu (Simplified for now as click actions)
+        // Right Click / Long Press Menu
         card.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            if(confirm(`Delete ${file.name}?`)) {
-                callbacks.deleteFile(file.id);
-            }
+            callbacks.deleteFile(file.id, file.name);
         });
 
         fragment.appendChild(card);

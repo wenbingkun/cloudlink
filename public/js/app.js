@@ -2,7 +2,7 @@ import { state, resetAdminState } from './state.js';
 import { loginAdmin, listFiles, deleteFile } from './api.js';
 import { parsePositiveInt, clearElement } from './utils.js';
 import { renderFileQueue, renderFiles } from './ui/render.js';
-import { showToast, hidePasswordModal, confirmPassword, hideConfirmModal, confirmAction, closePreview, downloadCurrentFile, copyCurrentFileLink, previewFile, showPasswordModal } from './ui/modal.js';
+import { showToast, hidePasswordModal, confirmPassword, hideConfirmModal, confirmAction, closePreview, downloadCurrentFile, copyCurrentFileLink, previewFile, showPasswordModal, showConfirmModal } from './ui/modal.js';
 import { initGlobalDrag } from './ui/drag.js';
 import { initLiquidDock } from './ui/fab.js';
 
@@ -47,8 +47,9 @@ function initAuthManager() {
         },
         getCurrentToken: () => localStorage.getItem('cloudlink_auth_token'),
         isAuthenticated: () => {
+            const token = localStorage.getItem('cloudlink_auth_token');
             const expiry = localStorage.getItem('cloudlink_token_expiry');
-            return expiry && Date.now() < parseInt(expiry);
+            return token && expiry && Date.now() < parseInt(expiry);
         },
         clearAuth: () => {
             localStorage.removeItem('cloudlink_auth_token');
@@ -80,19 +81,28 @@ function initUI() {
         setTimeout(() => uploadPanel?.classList.toggle('active'), 10);
     };
 
-    window.toggleLoginModal = () => {
+    // Helper to close login modal
+    const closeLoginModal = () => {
+        loginModal?.classList.remove('active');
+        setTimeout(() => loginModal?.classList.add('hidden'), 300);
+    };
+
+    window.toggleLoginModal = async () => {
         if (state.authManager.isAuthenticated()) {
-            if (confirm('Logout?')) {
+            const confirmed = await showConfirmModal('确定要退出登录吗？');
+            if (confirmed) {
                 state.authManager.clearAuth();
                 document.getElementById('auth-btn')?.classList.remove('auth-active');
-                loadFiles(true);
-                showToast('Logged out', 'info');
+                renderEmptyState();
+                showToast('已退出登录', 'info');
             }
         } else {
             loginModal?.classList.toggle('hidden');
             setTimeout(() => loginModal?.classList.toggle('active'), 10);
         }
     };
+
+    window.closeLoginModal = closeLoginModal;
 
     // 2. Event Listeners
     document.getElementById('auth-btn')?.addEventListener('click', window.toggleLoginModal);
@@ -108,9 +118,10 @@ function initUI() {
             const data = await loginAdmin(pwd);
             state.authManager.saveAuth(data.token);
             document.getElementById('auth-btn')?.classList.add('auth-active');
-            window.toggleLoginModal();
+            closeLoginModal();
+            document.getElementById('admin-password').value = '';
             loadFiles(true);
-            showToast('Welcome Admin', 'success');
+            showToast('欢迎回来，管理员', 'success');
         } catch (err) {
             showToast(err.message, 'error');
         }
@@ -235,10 +246,16 @@ async function uploadLargeFile(fileObj) {
 // --- List & Actions ---
 
 async function loadFiles(reset = false) {
+    if (!state.authManager.isAuthenticated()) {
+        renderEmptyState();
+        return;
+    }
+
     if (reset) {
         resetAdminState();
         clearElement(document.getElementById('file-grid'));
     }
+
     try {
         const data = await listFiles(state.authManager.getCurrentToken(), state.nextPageToken);
         state.allFiles.push(...data.files);
@@ -246,17 +263,35 @@ async function loadFiles(reset = false) {
         renderFiles(state, getRenderCallbacks());
     } catch (e) {
         console.error(e);
+        showToast('加载文件列表失败: ' + e.message, 'error');
     }
 }
 
 function getRenderCallbacks() {
     return {
         previewFile: (id, name, type) => previewFile(id, name, type),
-        deleteFile: async (id) => {
-            if (confirm('Delete?')) {
-                await deleteFile(state.authManager.getCurrentToken(), id);
-                loadFiles(true);
+        deleteFile: async (id, name) => {
+            const confirmed = await showConfirmModal(`确定删除 "${name}" 吗？`);
+            if (confirmed) {
+                try {
+                    await deleteFile(state.authManager.getCurrentToken(), id);
+                    showToast('删除成功', 'success');
+                    loadFiles(true);
+                } catch (e) {
+                    showToast(e.message, 'error');
+                }
             }
         }
     };
+}
+
+function renderEmptyState() {
+    const grid = document.getElementById('file-grid');
+    if (grid) {
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🔒</div>
+                <p>请先登录管理员账户</p>
+            </div>`;
+    }
 }
