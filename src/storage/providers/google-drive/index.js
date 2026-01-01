@@ -60,4 +60,8 @@ export class GoogleDriveProvider {
   async deleteFile(fileId) {
     return this.ensureClient().deleteFile(fileId);
   }
+
+  async renameFile(fileId, newName) {
+    return this.ensureClient().renameFile(fileId, newName);
+  }
 }

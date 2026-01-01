@@ -350,4 +350,23 @@ export class GoogleDriveAPI {
 
     return response.ok;
   }
+
+  async renameFile(fileId, newName) {
+    const accessToken = await this.getAccessToken();
+
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: newName }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to rename file: ${response.statusText}`);
+    }
+
+    return true;
+  }
 }

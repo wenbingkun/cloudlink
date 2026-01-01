@@ -83,13 +83,13 @@ export function renderFiles(state, callbacks) {
     state.allFiles.forEach(file => {
         const card = document.createElement('div');
         card.className = 'file-card';
-        card.onclick = () => callbacks.previewFile(file.id, file.name, file.mimeType);
 
-        // Preview Area
+        // Preview Area (clickable for preview)
         const preview = document.createElement('div');
         preview.className = 'card-preview';
-        
-        if (file.mimeType.startsWith('image/')) {
+        preview.onclick = () => callbacks.previewFile(file.id, file.name, file.mimeType);
+
+        if (file.mimeType && file.mimeType.startsWith('image/')) {
             const img = document.createElement('img');
             img.src = `/d/${file.id}`;
             img.loading = 'lazy';
@@ -103,7 +103,7 @@ export function renderFiles(state, callbacks) {
         // Info Area
         const info = document.createElement('div');
         info.className = 'card-info';
-        
+
         const title = document.createElement('h4');
         title.textContent = file.name;
         info.appendChild(title);
@@ -111,14 +111,58 @@ export function renderFiles(state, callbacks) {
         const meta = document.createElement('span');
         meta.textContent = formatFileSize(file.size);
         info.appendChild(meta);
-        
+
         card.appendChild(info);
 
-        // Right Click / Long Press Menu
-        card.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            callbacks.deleteFile(file.id, file.name);
-        });
+        // Action Buttons
+        const actions = document.createElement('div');
+        actions.className = 'card-actions';
+        actions.style.cssText = `
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--glass-border);
+        `;
+
+        let hasActions = false;
+
+        if (callbacks.copyLink) {
+            const copyBtn = createActionButton('📋', '复制链接', () => {
+                callbacks.copyLink(file.id);
+            });
+            actions.appendChild(copyBtn);
+            hasActions = true;
+        }
+
+        if (callbacks.downloadFile) {
+            const downloadBtn = createActionButton('⬇️', '下载', () => {
+                callbacks.downloadFile(file.id);
+            });
+            actions.appendChild(downloadBtn);
+            hasActions = true;
+        }
+
+        if (callbacks.renameFile) {
+            const renameBtn = createActionButton('✏️', '重命名', () => {
+                callbacks.renameFile(file.id, file.name);
+            });
+            actions.appendChild(renameBtn);
+            hasActions = true;
+        }
+
+        if (callbacks.deleteFile) {
+            const deleteBtn = createActionButton('🗑️', '删除', () => {
+                callbacks.deleteFile(file.id, file.name);
+            });
+            deleteBtn.style.color = '#ef4444';
+            actions.appendChild(deleteBtn);
+            hasActions = true;
+        }
+
+        if (hasActions) {
+            card.appendChild(actions);
+        }
 
         fragment.appendChild(card);
     });
@@ -135,6 +179,30 @@ function getFileIconChar(mimeType) {
     if (mimeType.includes('pdf')) return '📕';
     if (mimeType.includes('zip') || mimeType.includes('compressed')) return '📦';
     return '📄';
+}
+
+function createActionButton(icon, label, onClick) {
+    const button = document.createElement('button');
+    button.className = 'glass-btn';
+    button.type = 'button';
+    button.textContent = icon;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.style.cssText = `
+        flex: 1;
+        min-width: 44px;
+        height: 36px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    `;
+    button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick();
+    });
+    return button;
 }
 
 export function updateSelectedActions(state) {

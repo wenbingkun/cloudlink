@@ -150,6 +150,58 @@ export async function handleAdmin(request, env, storageProvider, path, url) {
       }
     }
 
+    if (path.startsWith('/admin/rename/') && request.method === 'PATCH') {
+      const fileId = path.substring('/admin/rename/'.length);
+      const authHeader = request.headers.get('Authorization');
+      
+      let authenticated = false;
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const authToken = authHeader.substring(7);
+        const verification = await authManager.verifyAuthToken(
+          authToken,
+          env.ADMIN_PASSWORD,
+          env.AUTH_TOKEN_SECRET
+        );
+        authenticated = verification.valid;
+      }
+      
+      if (!authenticated) {
+        return new Response(JSON.stringify({ error: '管理员密码错误' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
+      let data = {};
+      try {
+        data = await request.json();
+      } catch (error) {
+        data = {};
+      }
+
+      const newName = (data.name || '').trim();
+      if (!newName) {
+        return new Response(JSON.stringify({ error: '缺少文件名' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
+      const success = await storageProvider.renameFile(fileId, newName);
+      
+      if (success) {
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      } else {
+        return new Response(JSON.stringify({ error: '重命名失败' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+    }
+
     return new Response('页面不存在', { status: 404, headers: corsHeaders });
 
   } catch (error) {

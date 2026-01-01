@@ -32,3 +32,19 @@ export async function deleteFile(token, fileId) {
   }
   return true;
 }
+
+export async function renameFile(token, fileId, name) {
+  const response = await fetch(`/admin/rename/${fileId}`, {
+    method: 'PATCH',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ name })
+  });
+
+  if (!response.ok) {
+    throw new Error('重命名失败');
+  }
+  return true;
+}

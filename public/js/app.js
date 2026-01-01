@@ -1,8 +1,8 @@
 import { state, resetAdminState } from './state.js';
-import { loginAdmin, listFiles, deleteFile } from './api.js';
+import { loginAdmin, listFiles, deleteFile, renameFile } from './api.js';
 import { parsePositiveInt, clearElement } from './utils.js';
 import { renderFileQueue, renderFiles } from './ui/render.js';
-import { showToast, hidePasswordModal, confirmPassword, hideConfirmModal, confirmAction, closePreview, downloadCurrentFile, copyCurrentFileLink, previewFile, showPasswordModal, showConfirmModal } from './ui/modal.js';
+import { showToast, hidePasswordModal, confirmPassword, hideConfirmModal, confirmAction, closePreview, downloadCurrentFile, copyCurrentFileLink, previewFile, showPasswordModal, showConfirmModal, showRenameModal, hideRenameModal, confirmRename } from './ui/modal.js';
 import { initGlobalDrag } from './ui/drag.js';
 import { initLiquidDock } from './ui/fab.js';
 
@@ -26,8 +26,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initUI();
     
     // Modules
-    initGlobalDrag({ addFilesToQueue, toggleUploadPanel: window.toggleUploadPanel });
-    initLiquidDock({ toggleUploadPanel: window.toggleUploadPanel });
+    initGlobalDrag({ addFilesToQueue });
+    initLiquidDock();
     
     if (state.authManager.isAuthenticated()) {
         document.getElementById('auth-btn')?.classList.add('auth-active');
@@ -107,11 +107,8 @@ function initUI() {
     // 2. Event Listeners
     document.getElementById('auth-btn')?.addEventListener('click', window.toggleLoginModal);
 
-    // File input and drop zone
+    // File input
     const fileInput = document.getElementById('file-input');
-    const dropZone = document.getElementById('drop-zone');
-
-    dropZone?.addEventListener('click', () => fileInput?.click());
     fileInput?.addEventListener('change', (e) => {
         addFilesToQueue(Array.from(e.target.files));
         e.target.value = '';
@@ -138,6 +135,8 @@ function initUI() {
     document.getElementById('modalConfirmBtn')?.addEventListener('click', confirmPassword);
     document.getElementById('confirmCancelBtn')?.addEventListener('click', hideConfirmModal);
     document.getElementById('confirmOkBtn')?.addEventListener('click', confirmAction);
+    document.getElementById('renameCancelBtn')?.addEventListener('click', hideRenameModal);
+    document.getElementById('renameConfirmBtn')?.addEventListener('click', confirmRename);
     document.getElementById('previewCloseBtn')?.addEventListener('click', closePreview);
     document.getElementById('previewDownloadBtn')?.addEventListener('click', downloadCurrentFile);
     document.getElementById('previewCopyLinkBtn')?.addEventListener('click', copyCurrentFileLink);
@@ -153,6 +152,14 @@ function addFilesToQueue(files) {
             status: 'pending', progress: 0
         });
     });
+
+    // Auto-show upload panel when files are added
+    const uploadPanel = document.getElementById('upload-panel');
+    if (uploadPanel && !uploadPanel.classList.contains('active')) {
+        uploadPanel.classList.remove('hidden');
+        setTimeout(() => uploadPanel.classList.add('active'), 10);
+    }
+
     renderFileQueue(state, getRenderCallbacks());
     startUpload();
 }
@@ -276,6 +283,28 @@ async function loadFiles(reset = false) {
 function getRenderCallbacks() {
     return {
         previewFile: (id, name, type) => previewFile(id, name, type),
+        copyLink: (id) => {
+            const link = `${window.location.origin}/d/${id}`;
+            navigator.clipboard.writeText(link)
+                .then(() => showToast('链接已复制', 'success'))
+                .catch(() => showToast('复制失败', 'error'));
+        },
+        downloadFile: (id) => {
+            window.open(`/d/${id}`, '_blank');
+        },
+        renameFile: async (id, name) => {
+            try {
+                const newName = await showRenameModal(name);
+                if (!newName || newName === name) return;
+                await renameFile(state.authManager.getCurrentToken(), id, newName);
+                showToast('重命名成功', 'success');
+                loadFiles(true);
+            } catch (e) {
+                if (e && e.message) {
+                    showToast(e.message, 'error');
+                }
+            }
+        },
         deleteFile: async (id, name) => {
             const confirmed = await showConfirmModal(`确定删除 "${name}" 吗？`);
             if (confirmed) {

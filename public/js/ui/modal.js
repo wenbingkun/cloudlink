@@ -209,3 +209,58 @@ export function confirmAction() {
   modal.classList.remove('active');
   setTimeout(() => modal.classList.add('hidden'), 300);
 }
+
+// --- Rename Modal ---
+
+export function showRenameModal(currentName) {
+  return new Promise((resolve, reject) => {
+    const modal = document.getElementById('renameModal');
+    const input = document.getElementById('renameInput');
+    if (!modal || !input) return reject(new Error('rename modal missing'));
+
+    input.value = currentName || '';
+
+    const enterListener = (e) => {
+      if (e.key === 'Enter') {
+        confirmRename();
+        input.removeEventListener('keydown', enterListener);
+      }
+    };
+    input.addEventListener('keydown', enterListener);
+
+    modal.classList.remove('hidden');
+    setTimeout(() => modal.classList.add('active'), 10);
+    input.focus();
+
+    window.renameModalResolve = resolve;
+    window.renameModalReject = reject;
+  });
+}
+
+export function hideRenameModal() {
+  const modal = document.getElementById('renameModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  setTimeout(() => modal.classList.add('hidden'), 300);
+
+  if (window.renameModalReject) {
+    window.renameModalReject();
+  }
+  window.renameModalResolve = null;
+  window.renameModalReject = null;
+}
+
+export function confirmRename() {
+  const input = document.getElementById('renameInput');
+  if (!input) return;
+  const name = input.value.trim();
+  if (window.renameModalResolve) {
+    window.renameModalResolve(name);
+  }
+  window.renameModalResolve = null;
+  const modal = document.getElementById('renameModal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+  }
+}
