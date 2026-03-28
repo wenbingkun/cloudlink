@@ -1,7 +1,7 @@
 import { state, resetAdminState } from './state.js';
 import { loginAdmin, listFiles, deleteFile, renameFile } from './api.js';
 import { parsePositiveInt, clearElement } from './utils.js';
-import { renderFileQueue, renderFiles } from './ui/render.js';
+import { initReactiveUI, renderEmptyState } from './ui/render.js';
 import { showToast, hidePasswordModal, confirmPassword, hideConfirmModal, confirmAction, closePreview, downloadCurrentFile, copyCurrentFileLink, previewFile, showPasswordModal, showConfirmModal, showRenameModal, hideRenameModal, confirmRename } from './ui/modal.js';
 import { initGlobalDrag } from './ui/drag.js';
 import { initLiquidDock } from './ui/fab.js';
@@ -15,6 +15,8 @@ const CLOUDLINK_CONFIG = window.CLOUDLINK_CONFIG || {};
 const CHUNK_UPLOAD_THRESHOLD = parsePositiveInt(CLOUDLINK_CONFIG.chunkUploadThreshold, 50 * 1024 * 1024);
 const CHUNK_SIZE = parsePositiveInt(CLOUDLINK_CONFIG.chunkSize, 2 * 1024 * 1024);
 const MAX_CONCURRENT_UPLOADS = parsePositiveInt(CLOUDLINK_CONFIG.maxConcurrentUploads, 2);
+const SUCCESS_QUEUE_RETENTION_MS = 3000;
+const ERROR_QUEUE_RETENTION_MS = 5000;
 
 // =================================================================================
 // Initialization
@@ -25,9 +27,22 @@ document.addEventListener('DOMContentLoaded', function() {
     initTheme();
     initUI();
     
+    // Initialize Reactive UI with callbacks
+    initReactiveUI(getRenderCallbacks());
+    
     // Modules
     initGlobalDrag({ addFilesToQueue });
     initLiquidDock();
+    
+    // Global Clipboard Upload
+    document.addEventListener('paste', (e) => {
+        if (!e.clipboardData || !e.clipboardData.files || e.clipboardData.files.length === 0) return;
+        // Don't intercept if user is typing in an input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        
+        e.preventDefault();
+        addFilesToQueue(Array.from(e.clipboardData.files));
+    });
     
     if (state.authManager.isAuthenticated()) {
         document.getElementById('auth-btn')?.classList.add('auth-active');
@@ -73,13 +88,7 @@ function initTheme() {
 
 function initUI() {
     // 1. Panel Toggles
-    const uploadPanel = document.getElementById('upload-panel');
     const loginModal = document.getElementById('login-modal');
-
-    window.toggleUploadPanel = () => {
-        uploadPanel?.classList.toggle('hidden');
-        setTimeout(() => uploadPanel?.classList.toggle('active'), 10);
-    };
 
     // Helper to close login modal
     const closeLoginModal = () => {
@@ -89,12 +98,12 @@ function initUI() {
 
     window.toggleLoginModal = async () => {
         if (state.authManager.isAuthenticated()) {
-            const confirmed = await showConfirmModal('确定要退出登录吗？');
+            const confirmed = await showConfirmModal('Are you sure you want to log out?');
             if (confirmed) {
                 state.authManager.clearAuth();
                 document.getElementById('auth-btn')?.classList.remove('auth-active');
                 renderEmptyState();
-                showToast('已退出登录', 'info');
+                showToast('Logged out', 'info');
             }
         } else {
             loginModal?.classList.toggle('hidden');
@@ -106,6 +115,7 @@ function initUI() {
 
     // 2. Event Listeners
     document.getElementById('auth-btn')?.addEventListener('click', window.toggleLoginModal);
+    document.getElementById('loginCloseBtn')?.addEventListener('click', window.toggleLoginModal);
 
     // File input
     const fileInput = document.getElementById('file-input');
@@ -124,7 +134,7 @@ function initUI() {
             closeLoginModal();
             document.getElementById('admin-password').value = '';
             loadFiles(true);
-            showToast('欢迎回来，管理员', 'success');
+            showToast('Welcome back, Admin', 'success');
         } catch (err) {
             showToast(err.message, 'error');
         }
@@ -145,22 +155,23 @@ function initUI() {
 // --- Upload Logic ---
 
 function addFilesToQueue(files) {
-    files.forEach(file => {
-        state.fileQueue.push({
-            id: Date.now() + Math.random(),
-            file, name: file.name, size: file.size,
-            status: 'pending', progress: 0
-        });
+    const retainedItems = state.fileQueue.filter((item) => {
+        const keep = item.status === 'pending' || item.status === 'uploading';
+        if (!keep) {
+            clearQueueItemRemoval(item);
+        }
+        return keep;
     });
 
-    // Auto-show upload panel when files are added
-    const uploadPanel = document.getElementById('upload-panel');
-    if (uploadPanel && !uploadPanel.classList.contains('active')) {
-        uploadPanel.classList.remove('hidden');
-        setTimeout(() => uploadPanel.classList.add('active'), 10);
-    }
+    const newQueueItems = files.map(file => ({
+        id: Date.now() + Math.random(),
+        file, name: file.name, size: file.size,
+        status: 'pending', progress: 0
+    }));
+    
+    // Trigger reactivity by reassignment
+    state.fileQueue = [...retainedItems, ...newQueueItems];
 
-    renderFileQueue(state, getRenderCallbacks());
     startUpload();
 }
 
@@ -184,16 +195,21 @@ async function startUpload() {
 
 async function uploadFile(fileObj) {
     fileObj.status = 'uploading';
-    renderFileQueue(state, getRenderCallbacks());
+    state.fileQueue = [...state.fileQueue]; // Trigger UI update
+    
     try {
         if (fileObj.file.size < CHUNK_UPLOAD_THRESHOLD) await uploadSmallFile(fileObj);
         else await uploadLargeFile(fileObj);
         fileObj.status = 'success';
+        fileObj.progress = 100;
+        scheduleQueueItemRemoval(fileObj, SUCCESS_QUEUE_RETENTION_MS);
     } catch (e) {
         fileObj.status = 'error';
         fileObj.error = e.message;
+        showToast(fileObj.error || `Upload failed: ${fileObj.name}`, 'error');
+        scheduleQueueItemRemoval(fileObj, ERROR_QUEUE_RETENTION_MS);
     } finally {
-        renderFileQueue(state, getRenderCallbacks());
+        state.fileQueue = [...state.fileQueue]; // Trigger UI update
     }
 }
 
@@ -211,7 +227,7 @@ async function uploadSmallFile(fileObj) {
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
                 fileObj.progress = Math.round((e.loaded / e.total) * 100);
-                renderFileQueue(state, getRenderCallbacks());
+                state.fileQueue = [...state.fileQueue]; // Trigger UI update
             }
         };
         xhr.onload = () => {
@@ -253,7 +269,7 @@ async function uploadLargeFile(fileObj) {
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) {
                     fileObj.progress = Math.round(((start + e.loaded) / fileObj.size) * 100);
-                    renderFileQueue(state, getRenderCallbacks());
+                    state.fileQueue = [...state.fileQueue]; // Trigger UI update
                 }
             };
             xhr.onload = () => {
@@ -275,7 +291,7 @@ async function uploadLargeFile(fileObj) {
             ? fileObj.size
             : (typeof chunkResult.bytesUploaded === 'number' ? chunkResult.bytesUploaded : end);
         fileObj.progress = Math.min(100, Math.round((start / fileObj.size) * 100));
-        renderFileQueue(state, getRenderCallbacks());
+        state.fileQueue = [...state.fileQueue]; // Trigger UI update
     }
 }
 
@@ -293,6 +309,20 @@ function extractErrorMessage(responseText, fallbackMessage) {
     return data.error || fallbackMessage;
 }
 
+function scheduleQueueItemRemoval(fileObj, delayMs) {
+    clearQueueItemRemoval(fileObj);
+    fileObj.cleanupTimer = window.setTimeout(() => {
+        state.fileQueue = state.fileQueue.filter((item) => item !== fileObj);
+    }, delayMs);
+}
+
+function clearQueueItemRemoval(fileObj) {
+    if (fileObj.cleanupTimer) {
+        window.clearTimeout(fileObj.cleanupTimer);
+        fileObj.cleanupTimer = null;
+    }
+}
+
 // --- List & Actions ---
 
 async function loadFiles(reset = false) {
@@ -308,12 +338,13 @@ async function loadFiles(reset = false) {
 
     try {
         const data = await listFiles(state.authManager.getCurrentToken(), state.nextPageToken);
-        state.allFiles.push(...data.files);
         state.nextPageToken = data.nextPageToken;
-        renderFiles(state, getRenderCallbacks());
+        
+        // Trigger reactivity by reassignment
+        state.allFiles = [...state.allFiles, ...data.files];
     } catch (e) {
         console.error(e);
-        showToast('加载文件列表失败: ' + e.message, 'error');
+        showToast('Failed to load files: ' + e.message, 'error');
     }
 }
 
@@ -323,8 +354,8 @@ function getRenderCallbacks() {
         copyLink: (id) => {
             const link = `${window.location.origin}/d/${id}`;
             navigator.clipboard.writeText(link)
-                .then(() => showToast('链接已复制', 'success'))
-                .catch(() => showToast('复制失败', 'error'));
+                .then(() => showToast('Link copied', 'success'))
+                .catch(() => showToast('Copy failed', 'error'));
         },
         downloadFile: (id) => {
             window.open(`/d/${id}`, '_blank');
@@ -334,7 +365,7 @@ function getRenderCallbacks() {
                 const newName = await showRenameModal(name);
                 if (!newName || newName === name) return;
                 await renameFile(state.authManager.getCurrentToken(), id, newName);
-                showToast('重命名成功', 'success');
+                showToast('Renamed successfully', 'success');
                 loadFiles(true);
             } catch (e) {
                 if (e && e.message) {
@@ -343,11 +374,11 @@ function getRenderCallbacks() {
             }
         },
         deleteFile: async (id, name) => {
-            const confirmed = await showConfirmModal(`确定删除 "${name}" 吗？`);
+            const confirmed = await showConfirmModal(`Delete "${name}"?`);
             if (confirmed) {
                 try {
                     await deleteFile(state.authManager.getCurrentToken(), id);
-                    showToast('删除成功', 'success');
+                    showToast('Deleted successfully', 'success');
                     loadFiles(true);
                 } catch (e) {
                     showToast(e.message, 'error');
@@ -355,15 +386,4 @@ function getRenderCallbacks() {
             }
         }
     };
-}
-
-function renderEmptyState() {
-    const grid = document.getElementById('file-grid');
-    if (grid) {
-        grid.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">🔒</div>
-                <p>请先登录管理员账户</p>
-            </div>`;
-    }
 }

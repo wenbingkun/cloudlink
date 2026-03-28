@@ -86,21 +86,31 @@ async function testUiAssets() {
   const css = fs.readFileSync(path.resolve('public/css/styles.css'), 'utf8');
   const client = fs.readFileSync(path.resolve('public/js/app.js'), 'utf8');
   const drag = fs.readFileSync(path.resolve('public/js/ui/drag.js'), 'utf8');
+  const render = fs.readFileSync(path.resolve('public/js/ui/render.js'), 'utf8');
 
   assert.ok(html.includes('liquid-dock'), 'liquid dock should exist in HTML');
-  assert.ok(html.includes('upload-panel'), 'upload panel should exist in HTML');
+  assert.ok(html.includes('dynamic-island-container'), 'dynamic island container should exist in HTML');
+  assert.ok(html.includes('upload-queue'), 'upload queue container should exist in HTML');
   assert.ok(html.includes('login-modal'), 'login modal should exist in HTML');
+  assert.ok(html.includes('loginCloseBtn'), 'login close button should exist in HTML');
   assert.ok(html.includes('file-input'), 'file input should exist in HTML');
   assert.ok(html.includes('file-grid'), 'file grid should exist in HTML');
   assert.ok(html.includes('toast-container'), 'toast container should exist in HTML');
   assert.ok(css.includes('.liquid-btn'), 'liquid button styles should exist');
   assert.ok(css.includes('.glass-panel'), 'glass panel styles should exist');
   assert.ok(css.includes('.file-grid'), 'file grid styles should exist');
-  assert.ok(css.includes('.drop-zone'), 'drop zone styles should exist');
-  assert.ok(client.includes('toggleUploadPanel'), 'upload panel toggle should exist');
+  assert.ok(css.includes('.dynamic-island'), 'dynamic island styles should exist');
+  assert.ok(css.includes('calc(max(24px, env(safe-area-inset-top)) + 84px)'), 'toast offset should avoid overlapping the dynamic island');
+  assert.ok(css.includes('@keyframes toastSlideOut'), 'toast exit animation should exist');
+  assert.ok(client.includes('initReactiveUI'), 'reactive ui should be initialized');
   assert.ok(client.includes('toggleLoginModal'), 'login modal toggle should exist');
+  assert.ok(client.includes('scheduleQueueItemRemoval'), 'upload queue items should be cleaned up after completion');
   assert.ok(drag.includes('dragenter'), 'global drag should handle dragenter');
   assert.ok(drag.includes('drop'), 'global drag should handle drop');
+  assert.ok(render.includes('document.createElement'), 'render layer should use DOM APIs');
+  assert.ok(!render.includes('onerror="'), 'render layer should avoid inline event handlers');
+  assert.ok(render.includes("label: 'Download'"), 'context menu should include a download action');
+  assert.ok(!html.includes('onclick="toggleLoginModal()"'), 'login modal should not rely on inline onclick handlers');
 }
 
 async function testUiInteractionsStatic() {
