@@ -1,9 +1,10 @@
 import { buildCorsHeaders } from '../utils/helpers.js';
 
 export async function handleDownload(request, env, storageProvider, path, options = {}) {
+  const corsHeaders = buildCorsHeaders(request, env);
   try {
-    const corsHeaders = buildCorsHeaders(request, env);
     const fileId = path.substring(3);
+    const cacheControl = options.cacheControl || 'public, max-age=31536000';
 
     if (env.REQUIRE_SHARE_TOKEN === 'true' && !options.bypassShareCheck) {
       return new Response('下载需要分享链接授权', { status: 403, headers: corsHeaders });
@@ -21,22 +22,23 @@ export async function handleDownload(request, env, storageProvider, path, option
     
     if (rangeHeader) {
       // 处理范围请求（用于大文件分段下载）
-      return handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader);
+      return handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader, cacheControl);
     } else {
       // 普通下载
-      return handleNormalDownload(request, env, storageProvider, fileId, fileInfo);
+      return handleNormalDownload(request, env, storageProvider, fileId, fileInfo, cacheControl);
     }
 
   } catch (error) {
     console.error('Download error:', error);
-    if (error.message.includes('404') || error.message.includes('not found')) {
+    const message = error?.message || '';
+    if (message.includes('404') || message.includes('not found')) {
       return new Response('文件不存在', { status: 404, headers: corsHeaders });
     }
     return new Response('下载失败', { status: 500, headers: corsHeaders });
   }
 }
 
-async function handleNormalDownload(request, env, storageProvider, fileId, fileInfo) {
+async function handleNormalDownload(request, env, storageProvider, fileId, fileInfo, cacheControl) {
   const corsHeaders = buildCorsHeaders(request, env);
   const fileResponse = await storageProvider.downloadFile(fileId);
   
@@ -44,7 +46,7 @@ async function handleNormalDownload(request, env, storageProvider, fileId, fileI
     const headers = {
       'Content-Type': fileInfo.mimeType || 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${encodeURIComponent(fileInfo.name)}"`,
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': cacheControl,
       'Content-Length': fileInfo.size || '',
       'Accept-Ranges': 'bytes',
       ...corsHeaders
@@ -56,7 +58,7 @@ async function handleNormalDownload(request, env, storageProvider, fileId, fileI
   }
 }
 
-async function handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader) {
+async function handleRangeDownload(request, env, storageProvider, fileId, fileInfo, rangeHeader, cacheControl) {
   const corsHeaders = buildCorsHeaders(request, env);
   // 解析范围请求 Range: bytes=start-end
   const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
@@ -89,7 +91,7 @@ async function handleRangeDownload(request, env, storageProvider, fileId, fileIn
         'Content-Range': `bytes ${start}-${end}/${totalSize}`,
         'Content-Length': (end - start + 1).toString(),
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=31536000',
+        'Cache-Control': cacheControl,
         ...corsHeaders
       };
       

@@ -3,12 +3,70 @@ import { generateShareToken, hashPasscode, verifyPasscode } from '../utils/share
 import { handleDownload } from './download.js';
 import { ServerAuthManager } from '../auth/auth-manager.js';
 
+const SHARE_ACCESS_COOKIE = 'cloudlink_share_access';
+const SHARE_DOWNLOAD_CACHE_CONTROL = 'private, no-store';
+
 function parsePositiveInt(value, fallback) {
   if (value === undefined || value === null || value === '') {
     return fallback;
   }
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readCookie(cookieHeader, name) {
+  if (!cookieHeader) return '';
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) {
+      return rest.join('=');
+    }
+  }
+  return '';
+}
+
+async function getShareAccessGrant(token, env) {
+  return hashPasscode(token, `${env.AUTH_TOKEN_SECRET || 'cloudlink-share'}:access`);
+}
+
+async function hasValidShareAccessGrant(request, token, env) {
+  const cookieValue = readCookie(request.headers.get('Cookie'), SHARE_ACCESS_COOKIE);
+  if (!cookieValue) return false;
+  return verifyPasscode(
+    token,
+    cookieValue,
+    `${env.AUTH_TOKEN_SECRET || 'cloudlink-share'}:access`
+  );
+}
+
+function cloneResponseWithHeaders(response, extraHeaders = {}) {
+  const headers = new Headers(response.headers);
+  Object.entries(extraHeaders).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+function isSuccessfulDownloadResponse(response) {
+  return response.status === 200 || response.status === 206;
+}
+
+function buildShareResponseHeaders(url, token, accessGrant = '') {
+  const headers = {
+    'Cache-Control': SHARE_DOWNLOAD_CACHE_CONTROL,
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  };
+
+  if (accessGrant) {
+    const secureFlag = url.protocol === 'https:' ? '; Secure' : '';
+    headers['Set-Cookie'] = `${SHARE_ACCESS_COOKIE}=${accessGrant}; Max-Age=300; Path=/s/${token}; HttpOnly; SameSite=Lax${secureFlag}`;
+  }
+
+  return headers;
 }
 
 function buildShareHtml(url, token, error) {
@@ -164,12 +222,13 @@ async function handleShareAccess(request, env, storageProvider, token, url, cors
     return new Response('分享链接已过期', { status: 410, headers: corsHeaders });
   }
 
-  if (shareRecord.maxDownloads && shareRecord.downloads >= shareRecord.maxDownloads) {
+  const hasAccessGrant = await hasValidShareAccessGrant(request, token, env);
+  if (!hasAccessGrant && shareRecord.maxDownloads && shareRecord.downloads >= shareRecord.maxDownloads) {
     return new Response('分享链接已达到下载上限', { status: 429, headers: corsHeaders });
   }
 
   const passcode = request.url ? new URL(request.url).searchParams.get('code') || '' : '';
-  if (shareRecord.passcodeRequired) {
+  if (shareRecord.passcodeRequired && !hasAccessGrant) {
     if (!passcode) {
       return new Response(buildShareHtml(url.origin, token, ''), {
         headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
@@ -188,12 +247,26 @@ async function handleShareAccess(request, env, storageProvider, token, url, cors
     }
   }
 
+  const downloadPath = `/d/${shareRecord.fileId}`;
+  const downloadRequest = new Request(new URL(downloadPath, url.origin), request);
+  const downloadResponse = await handleDownload(downloadRequest, env, storageProvider, downloadPath, {
+    bypassShareCheck: true,
+    cacheControl: SHARE_DOWNLOAD_CACHE_CONTROL
+  });
+
+  if (!isSuccessfulDownloadResponse(downloadResponse)) {
+    return downloadResponse;
+  }
+
+  if (hasAccessGrant) {
+    return cloneResponseWithHeaders(downloadResponse, buildShareResponseHeaders(url, token));
+  }
+
   shareRecord.downloads += 1;
   await env.SHARE_LINKS.put(token, JSON.stringify(shareRecord), {
     expirationTtl: Math.max(1, Math.floor((shareRecord.expiresAt - Date.now()) / 1000)),
   });
 
-  const downloadPath = `/d/${shareRecord.fileId}`;
-  const downloadRequest = new Request(new URL(downloadPath, url.origin), request);
-  return handleDownload(downloadRequest, env, storageProvider, downloadPath, { bypassShareCheck: true });
+  const accessGrant = await getShareAccessGrant(token, env);
+  return cloneResponseWithHeaders(downloadResponse, buildShareResponseHeaders(url, token, accessGrant));
 }

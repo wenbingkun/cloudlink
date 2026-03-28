@@ -4,6 +4,10 @@ import path from 'node:path';
 import { ServerAuthManager } from '../src/core/auth/auth-manager.js';
 import { buildCorsHeaders } from '../src/core/utils/helpers.js';
 import { generateShareToken, hashPasscode, verifyPasscode } from '../src/core/utils/share-utils.js';
+import { handleDownload } from '../src/core/handlers/download.js';
+import { handleShare } from '../src/core/handlers/share.js';
+import { handleAdmin } from '../src/core/handlers/admin.js';
+import { handleUpload } from '../src/core/handlers/upload.js';
 
 function base64UrlEncode(input) {
   return Buffer.from(input, 'utf8')
@@ -70,6 +74,11 @@ async function testCorsAllowlist() {
     'https://api.example.com',
     'default allowlist should allow same origin'
   );
+
+  assert.ok(
+    sameOriginHeaders['Access-Control-Allow-Headers'].includes('X-Upload-Token'),
+    'chunk upload token header should be allowed'
+  );
 }
 
 async function testUiAssets() {
@@ -120,6 +129,7 @@ async function testServerConfigReferences() {
   assert.ok(config.includes('MAX_UPLOAD_REQUESTS_PER_MIN'), 'config should read upload rate limit config');
   assert.ok(config.includes('MAX_ADMIN_REQUESTS_PER_MIN'), 'config should read admin rate limit config');
   assert.ok(config.includes('MAX_CHUNK_REQUESTS_PER_MIN'), 'config should read chunk rate limit config');
+  assert.ok(config.includes('MAX_SHARE_REQUESTS_PER_MIN'), 'config should read share rate limit config');
   assert.ok(download.includes('REQUIRE_SHARE_TOKEN'), 'download handler should honor share token requirement');
 }
 
@@ -137,6 +147,155 @@ async function testShareUtils() {
   assert.ok(/^[A-Za-z0-9_-]+$/.test(token), 'share token should be url-safe');
 }
 
+async function testDownloadMissingFileReturns404() {
+  const request = new Request('https://example.com/d/missing');
+  const response = await handleDownload(request, {}, {
+    getFileInfo: async () => {
+      throw new Error('not found');
+    }
+  }, '/d/missing');
+
+  assert.equal(response.status, 404, 'missing files should return 404');
+}
+
+async function testShareDownloadUsesPrivateCachingAndCookie() {
+  const token = 'share-token-1';
+  const kv = new Map();
+  kv.set(token, JSON.stringify({
+    fileId: 'file-1',
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    maxDownloads: 1,
+    downloads: 0,
+    passcodeRequired: false,
+    passcodeHash: null
+  }));
+
+  const env = {
+    SHARE_LINKS: {
+      get: async (key) => kv.get(key),
+      put: async (key, value) => kv.set(key, value)
+    },
+    REQUIRE_SHARE_TOKEN: 'true',
+    AUTH_TOKEN_SECRET: 'share-secret'
+  };
+
+  const storage = {
+    getFileInfo: async () => ({ name: 'demo.txt', size: '5', mimeType: 'text/plain' }),
+    downloadFile: async () => new Response('hello', { status: 200 })
+  };
+
+  const request = new Request(`https://example.com/s/${token}`);
+  const response = await handleShare(request, env, storage, `/s/${token}`, new URL(request.url));
+
+  assert.equal(response.status, 200, 'share downloads should succeed');
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store', 'share downloads should disable public caching');
+  assert.ok(response.headers.get('Set-Cookie')?.includes('cloudlink_share_access='), 'share downloads should issue access cookie');
+  assert.equal(JSON.parse(kv.get(token)).downloads, 1, 'successful share download should increment counter');
+
+  const rangeRequest = new Request(`https://example.com/s/${token}`, {
+    headers: {
+      Cookie: response.headers.get('Set-Cookie'),
+      Range: 'bytes=0-1'
+    }
+  });
+  const rangeStorage = {
+    getFileInfo: async () => ({ name: 'demo.txt', size: '5', mimeType: 'text/plain' }),
+    downloadFileRange: async () => new Response('he', { status: 206 })
+  };
+
+  const rangeResponse = await handleShare(rangeRequest, env, rangeStorage, `/s/${token}`, new URL(rangeRequest.url));
+  assert.equal(rangeResponse.status, 206, 'range downloads should succeed with cookie');
+  assert.equal(JSON.parse(kv.get(token)).downloads, 1, 'range retries with access cookie should not re-count downloads');
+}
+
+async function testShareDoesNotCountFailedDownloads() {
+  const token = 'share-token-2';
+  const kv = new Map();
+  kv.set(token, JSON.stringify({
+    fileId: 'file-2',
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    maxDownloads: 1,
+    downloads: 0,
+    passcodeRequired: false,
+    passcodeHash: null
+  }));
+
+  const env = {
+    SHARE_LINKS: {
+      get: async (key) => kv.get(key),
+      put: async (key, value) => kv.set(key, value)
+    },
+    REQUIRE_SHARE_TOKEN: 'true'
+  };
+
+  const storage = {
+    getFileInfo: async () => {
+      throw new Error('not found');
+    }
+  };
+
+  const request = new Request(`https://example.com/s/${token}`);
+  const response = await handleShare(request, env, storage, `/s/${token}`, new URL(request.url));
+
+  assert.equal(response.status, 404, 'failed share downloads should bubble original error');
+  assert.equal(JSON.parse(kv.get(token)).downloads, 0, 'failed downloads should not increment counter');
+}
+
+async function testAdminVerifyTokenReturnsTimestamp() {
+  const auth = new ServerAuthManager();
+  const secret = 'verify-secret';
+  const password = 'admin-pass';
+  const token = await auth.generateToken(password, secret);
+  const request = new Request('https://example.com/admin/verify-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+
+  const response = await handleAdmin(
+    request,
+    { ADMIN_PASSWORD: password, AUTH_TOKEN_SECRET: secret },
+    {},
+    '/admin/verify-token',
+    new URL(request.url)
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200, 'verify-token should succeed for valid token');
+  assert.equal(payload.valid, true, 'verify-token should mark token as valid');
+  assert.equal(typeof payload.timestamp, 'number', 'verify-token should expose token timestamp');
+}
+
+async function testDirectUploadRejectsFilesAboveDirectThreshold() {
+  let uploadCalled = false;
+  const formData = new FormData();
+  formData.append('password', 'upload-pass');
+  formData.append('file', new File(['123456'], 'demo.txt', { type: 'text/plain' }));
+  const request = new Request('https://example.com/upload', {
+    method: 'POST',
+    body: formData
+  });
+
+  const response = await handleUpload(request, {
+    UPLOAD_PASSWORD: 'upload-pass',
+    DIRECT_UPLOAD_MAX_SIZE: '5',
+    MAX_FILE_SIZE: '100',
+    ALLOWED_EXTENSIONS: 'txt'
+  }, {
+    uploadFile: async () => {
+      uploadCalled = true;
+      return { id: 'file-1' };
+    }
+  }, new URL('https://example.com/upload'));
+
+  const payload = await response.json();
+  assert.equal(response.status, 413, 'direct upload should reject files above the direct upload ceiling');
+  assert.equal(payload.requireChunkedUpload, true, 'response should instruct the client to switch to chunked upload');
+  assert.equal(uploadCalled, false, 'storage provider should not be called for oversized direct uploads');
+}
+
 async function run() {
   await testAuthTokens();
   await testCorsAllowlist();
@@ -144,6 +303,11 @@ async function run() {
   await testUiInteractionsStatic();
   await testShareUtils();
   await testServerConfigReferences();
+  await testDownloadMissingFileReturns404();
+  await testShareDownloadUsesPrivateCachingAndCookie();
+  await testShareDoesNotCountFailedDownloads();
+  await testAdminVerifyTokenReturnsTimestamp();
+  await testDirectUploadRejectsFilesAboveDirectThreshold();
   console.log('All tests passed.');
 }
 

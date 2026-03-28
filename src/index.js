@@ -69,11 +69,13 @@ export default {
     const isChunkedUpload = path.startsWith('/chunked-upload/chunk/');
     const isNormalUpload = path === '/upload';
     const isAdminOperation = path.startsWith('/admin');
+    const isShareOperation = path.startsWith('/share') || path.startsWith('/s/');
 
     const rateWindowMs = config.rateLimitWindowMs;
     const uploadLimit = config.maxUploadRequestsPerMin;
     const adminLimit = config.maxAdminRequestsPerMin;
     const chunkLimit = config.maxChunkRequestsPerMin;
+    const shareLimit = config.maxShareRequestsPerMin;
 
     if (isNormalUpload) {
       if (!rateLimiter.isAllowed(clientIP, uploadLimit, rateWindowMs)) {
@@ -96,6 +98,13 @@ export default {
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
       }
+    } else if (isShareOperation) {
+      if (!rateLimiter.isAllowed(clientIP, shareLimit, rateWindowMs)) {
+        return new Response(JSON.stringify({ error: '分享访问请求过于频繁，请稍后再试' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
     }
 
     try {
@@ -115,7 +124,7 @@ export default {
         return handleDownload(request, env, storageProvider, path);
       }
 
-      if (path.startsWith('/share') || path.startsWith('/s/')) {
+      if (isShareOperation) {
         return handleShare(request, env, storageProvider, path, url);
       }
 

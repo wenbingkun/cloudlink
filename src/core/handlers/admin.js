@@ -55,7 +55,7 @@ export async function handleAdmin(request, env, storageProvider, path, url) {
       if (verification.valid) {
         return new Response(JSON.stringify({ 
           valid: true,
-          timestamp: verification.timestamp
+          timestamp: verification.payload.timestamp
         }), {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });

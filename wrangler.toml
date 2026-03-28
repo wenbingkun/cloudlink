@@ -20,11 +20,13 @@ binding = "ASSETS"
 
 [vars]
 MAX_FILE_SIZE = "2147483648"  # 2GB in bytes
+DIRECT_UPLOAD_MAX_SIZE = "52428800"  # 50MB direct upload ceiling
 ALLOWED_EXTENSIONS = "jpg,jpeg,png,gif,webp,svg,bmp,tiff,pdf,doc,docx,ppt,pptx,xls,xlsx,csv,rtf,txt,md,json,xml,html,css,js,zip,rar,7z,tar,gz,mp4,mp3,wav,flac,avi,mov,mkv,lrc,srt,ass,ssa,vtt,sub"
 RATE_LIMIT_WINDOW_MS = "60000"
 MAX_UPLOAD_REQUESTS_PER_MIN = "10"
 MAX_ADMIN_REQUESTS_PER_MIN = "10"
 MAX_CHUNK_REQUESTS_PER_MIN = "100"
+MAX_SHARE_REQUESTS_PER_MIN = "20"
 
 # 敏感信息通过 wrangler secret 命令设置
 # wrangler secret put GOOGLE_SERVICE_ACCOUNT_EMAIL

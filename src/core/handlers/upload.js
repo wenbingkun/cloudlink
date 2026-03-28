@@ -2,10 +2,26 @@ import { ServerAuthManager } from '../auth/auth-manager.js';
 import { buildCorsHeaders } from '../utils/helpers.js';
 
 const authManager = new ServerAuthManager();
+const DEFAULT_DIRECT_UPLOAD_MAX_SIZE = 50 * 1024 * 1024; // 50MB
 
 export async function handleUpload(request, env, storageProvider, url) {
   const corsHeaders = buildCorsHeaders(request, env);
   try {
+    const directUploadMaxSize = parseInt(
+      env.DIRECT_UPLOAD_MAX_SIZE || String(DEFAULT_DIRECT_UPLOAD_MAX_SIZE),
+      10
+    );
+    const declaredLength = parseInt(request.headers.get('Content-Length') || '', 10);
+    if (Number.isFinite(declaredLength) && declaredLength > directUploadMaxSize + 1024 * 1024) {
+      return new Response(JSON.stringify({
+        error: '文件过大，请使用分块上传',
+        requireChunkedUpload: true
+      }), {
+        status: 413,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
     const formData = await request.formData();
     const password = formData.get('password');
     const file = formData.get('file');
@@ -35,6 +51,16 @@ export async function handleUpload(request, env, storageProvider, url) {
     if (!file) {
       return new Response(JSON.stringify({ error: '未选择文件' }), { 
         status: 400, 
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    if (file.size > directUploadMaxSize) {
+      return new Response(JSON.stringify({
+        error: '文件过大，请使用分块上传',
+        requireChunkedUpload: true
+      }), {
+        status: 413,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }

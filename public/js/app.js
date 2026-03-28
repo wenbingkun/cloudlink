@@ -214,7 +214,13 @@ async function uploadSmallFile(fileObj) {
                 renderFileQueue(state, getRenderCallbacks());
             }
         };
-        xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload Failed'));
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(parseJsonResponse(xhr.responseText));
+                return;
+            }
+            reject(new Error(extractErrorMessage(xhr.responseText, 'Upload Failed')));
+        };
         xhr.onerror = () => reject(new Error('Network Error'));
         xhr.send(formData);
     });
@@ -229,14 +235,16 @@ async function uploadLargeFile(fileObj) {
         headers, 
         body: JSON.stringify({ fileName: fileObj.name, fileSize: fileObj.size, password: state.uploadPassword }) 
     });
-    if (!res.ok) throw new Error('Session Failed');
-    const { sessionId, sessionToken } = await res.json();
+    const startData = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(startData.error || 'Session Failed');
+    const { sessionId, sessionToken, chunkSize } = startData;
+    const effectiveChunkSize = chunkSize || CHUNK_SIZE;
 
     let start = 0;
     while (start < fileObj.size) {
-        const end = Math.min(start + CHUNK_SIZE, fileObj.size);
+        const end = Math.min(start + effectiveChunkSize, fileObj.size);
         const chunk = fileObj.file.slice(start, end);
-        await new Promise((resolve, reject) => {
+        const chunkResult = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('PUT', `/chunked-upload/chunk/${sessionId}`);
             xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${fileObj.size}`);
@@ -248,12 +256,41 @@ async function uploadLargeFile(fileObj) {
                     renderFileQueue(state, getRenderCallbacks());
                 }
             };
-            xhr.onload = () => resolve();
-            xhr.onerror = reject;
+            xhr.onload = () => {
+                const data = parseJsonResponse(xhr.responseText);
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    reject(new Error(data.error || 'Chunk upload failed'));
+                    return;
+                }
+                if (data.error) {
+                    reject(new Error(data.error));
+                    return;
+                }
+                resolve(data);
+            };
+            xhr.onerror = () => reject(new Error('Network Error'));
             xhr.send(chunk);
         });
-        start = end;
+        start = chunkResult.completed
+            ? fileObj.size
+            : (typeof chunkResult.bytesUploaded === 'number' ? chunkResult.bytesUploaded : end);
+        fileObj.progress = Math.min(100, Math.round((start / fileObj.size) * 100));
+        renderFileQueue(state, getRenderCallbacks());
     }
+}
+
+function parseJsonResponse(responseText) {
+    if (!responseText) return {};
+    try {
+        return JSON.parse(responseText);
+    } catch {
+        return {};
+    }
+}
+
+function extractErrorMessage(responseText, fallbackMessage) {
+    const data = parseJsonResponse(responseText);
+    return data.error || fallbackMessage;
 }
 
 // --- List & Actions ---

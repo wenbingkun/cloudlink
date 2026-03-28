@@ -47,7 +47,7 @@ export function buildCorsHeaders(request, env) {
   const { allowedOrigin } = resolveCorsOrigin(request, env);
   const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Range, X-Auth-Token',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Range, Range, X-Upload-Token',
   };
 
   if (allowedOrigin) {

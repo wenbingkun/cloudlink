@@ -14,5 +14,6 @@ export function getConfig(env) {
     maxUploadRequestsPerMin: parseInt(env.MAX_UPLOAD_REQUESTS_PER_MIN || '10'),
     maxAdminRequestsPerMin: parseInt(env.MAX_ADMIN_REQUESTS_PER_MIN || '10'),
     maxChunkRequestsPerMin: parseInt(env.MAX_CHUNK_REQUESTS_PER_MIN || '100'),
+    maxShareRequestsPerMin: parseInt(env.MAX_SHARE_REQUESTS_PER_MIN || '20'),
   };
 }
